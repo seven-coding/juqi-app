@@ -1,0 +1,9 @@
+{
+  "name": "syncHomeDynFromProd",
+  "version": "1.0.0",
+  "description": "从正式环境同步首页各 type 所需动态到测试环境，最多50条，便于 App 验证",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.5.0"
+  }
+}

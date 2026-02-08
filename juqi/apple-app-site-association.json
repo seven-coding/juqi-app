@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "CRP77P4D8P.com.seven.juqi",
+        "paths": [
+          "/app/*"
+        ]
+      }
+    ]
+  }
+}

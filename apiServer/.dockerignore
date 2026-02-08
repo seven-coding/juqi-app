@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+npm-debug.log
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build
+dist
+
+# Test
+coverage
+.nyc_output
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Docker
+Dockerfile*
+docker-compose*
+.docker
+
+# Documentation
+README.md
+docs
+
+# Misc
+*.md
+*.log
+.DS_Store

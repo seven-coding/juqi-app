@@ -1,0 +1,4 @@
+// 工具函数
+exports.REDIS_CONFIG = {
+  GET_SQUARE_TOTAL: "GET_SQUARE_TOTAL"
+};

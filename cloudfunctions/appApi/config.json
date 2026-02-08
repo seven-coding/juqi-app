@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "openapi": [
+      "wx.request",
+      "security.msgSecCheck"
+    ]
+  },
+  "environment": "test",
+  "envId": "test-juqi-3g1m5qa7cc2737a1"
+}

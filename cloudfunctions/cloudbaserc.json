@@ -1,0 +1,30 @@
+{
+  "version": "2.0",
+  "envId": "test-juqi-3g1m5qa7cc2737a1",
+  "region": "ap-shanghai",
+  "functionRoot": ".",
+  "functions": [
+    { "name": "appApi", "timeout": 60, "runtime": "Nodejs16.13", "installDependency": true, "handler": "index.main" },
+    { "name": "getDynsListV2", "timeout": 60, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "getDynDetail", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "publishDyn", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "likeOrUnlikeV2", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "delDyn", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "getMessagesNew", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "setMessage", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "getCircle", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "getCircleDetail", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "getTopic", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "setTopic", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "setJoinCircle", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "getRearch", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "login", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "commonRequest", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "getUserAbout", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "chargeHer", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "setUser", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "updateUserInfo", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "getUserList", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "setUserInfo", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true }
+  ]
+}

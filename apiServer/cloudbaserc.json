@@ -1,0 +1,6 @@
+{
+  "envId": "test-juqi-3g1m5qa7cc2737a1",
+  "cloudrun": {
+    "name": "juqi-api-server"
+  }
+}

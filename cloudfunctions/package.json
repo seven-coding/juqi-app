@@ -1,0 +1,19 @@
+{
+  "name": "juqi-app-cloudfunctions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "补建/部署脚本依赖，仅腾讯云密钥即可补建云函数（无需小程序 AppID）",
+  "scripts": {
+    "create-functions": "node wx-create-functions.js",
+    "deploy": "node run-full-deploy.js"
+  },
+  "devDependencies": {
+    "@cloudbase/manager-node": "^4.0.0",
+    "dotenv": "^16.0.0"
+  },
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.17.0",
+    "archiver": "^7.0.1",
+    "tencentcloud-sdk-nodejs": "^4.1.183"
+  }
+}
