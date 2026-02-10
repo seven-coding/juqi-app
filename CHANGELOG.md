@@ -14,6 +14,7 @@ All notable changes to the JUQI iOS App project will be documented in this file.
 ### 新增 (Added)
 - 项目根目录：创建 CHANGELOG.md 更新日志文件
 - 文档：CHANGELOG模板.md - 更新记录模板和快速参考
+- 文档：CHANGELOG快速参考.md - 快速开始指南
 - 文档：更新记录管理指南.md - 完整的更新记录管理体系说明
 - 脚本：update-changelog.sh - CHANGELOG 更新辅助工具
 - 消息：不看TA、不让TA看、未访问列表视图（NoSeeListView、NoSeeMeListView、NoVisitListView）
