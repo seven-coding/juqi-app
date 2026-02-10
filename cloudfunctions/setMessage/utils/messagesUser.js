@@ -1,10 +1,9 @@
-// 申请置顶
-const cloud = require('wx-server-sdk')
-cloud.init()
+const cloud = require('wx-server-sdk');
+cloud.init();
 
-const db = cloud.database()
-const _ = db.command;
-const $ = db.command.aggregate;
+function getDb() {
+  return global.__SETMESSAGE_DB__ || (cloud.init(), cloud.database());
+}
 
 const {
   getRedisValue,
@@ -12,18 +11,17 @@ const {
   setRedisExpire
 } = require('./redis');
 
-// 给动态点赞
 async function getMesUser(mesId) {
-
-  let redisResult = await getRedisValue(mesId)
+  let redisResult = await getRedisValue(mesId);
 
   if (redisResult) {
     console.log('命中缓存');
-
     redisResult = JSON.parse(redisResult);
     return redisResult;
-  } else { 
-    let res = (await db.collection('messagesUser').aggregate()
+  }
+
+  const db = getDb();
+  let res = (await db.collection('messagesUser').aggregate()
     .match({
       _id: mesId,
     })
@@ -42,11 +40,10 @@ async function getMesUser(mesId) {
 }
 
 async function setMesUser(data, updateInfo) {
-
+  const db = getDb();
   const result = await db.collection('messagesUser').where(data).update({
     data: updateInfo
   });
-
   return result;
 }
 

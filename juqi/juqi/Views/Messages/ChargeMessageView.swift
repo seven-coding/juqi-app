@@ -8,14 +8,18 @@
 import SwiftUI
 
 struct ChargeMessageView: View {
-    @StateObject private var viewModel = MessageCategoryViewModel(messageType: 5)
+    @StateObject private var viewModel = MessageCategoryViewModel(messageType: MessageTypeConstant.charge)
     
     var body: some View {
         ZStack {
             Color(hex: "#000000")
                 .ignoresSafeArea()
             
-            if viewModel.isEmpty && !viewModel.isLoading {
+            if viewModel.loadFailed && !viewModel.isLoading {
+                MessageLoadFailedView(message: viewModel.loadFailedMessage) {
+                    viewModel.refresh()
+                }
+            } else if viewModel.isEmpty && !viewModel.isLoading {
                 EmptyStateView(
                     icon: "bolt.fill",
                     title: "暂无充电消息",

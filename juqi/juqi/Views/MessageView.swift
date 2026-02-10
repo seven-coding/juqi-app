@@ -27,7 +27,7 @@ struct MessageView: View {
                         .background(Color(hex: "#000000"))
                     
                     // 消息列表（首屏加载时显示 loading）
-                    if viewModel.isLoading && viewModel.messages.isEmpty {
+                    if viewModel.isLoading && viewModel.messages.isEmpty && !viewModel.loadFailed {
                         VStack {
                             Spacer()
                             ProgressView()
@@ -38,6 +38,10 @@ struct MessageView: View {
                                 .foregroundColor(Color(hex: "#605D5D"))
                                 .padding(.top, 8)
                             Spacer()
+                        }
+                    } else if viewModel.loadFailed && !viewModel.isLoading {
+                        MessageLoadFailedView(message: viewModel.loadFailedMessage) {
+                            viewModel.refresh()
                         }
                     } else if viewModel.isEmpty && !viewModel.isLoading {
                         EmptyStateView(
@@ -51,6 +55,7 @@ struct MessageView: View {
                 }
             }
             .onAppear {
+                print("📤 [MessageView] onAppear 消息 tab 展示，触发 loadMessages（仅首次会请求）")
                 viewModel.loadMessages()
             }
             .navigationDestination(for: MessageNavDestination.self) { destination in
@@ -167,6 +172,31 @@ struct MessageView: View {
             }
         case .detail(let from, let type, let title):
             MessageDetailView(from: from, type: type, title: title)
+        }
+    }
+}
+
+// MARK: - 加载失败态（可复用）
+
+struct MessageLoadFailedView: View {
+    var message: String?
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "exclamationmark.icloud")
+                .font(.system(size: 48))
+                .foregroundColor(Color(hex: "#605D5D"))
+            Text(message ?? "加载失败")
+                .font(.system(size: 16))
+                .foregroundColor(Color(hex: "#D6D0D0"))
+            Button("重试", action: onRetry)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(Color(hex: "#FF6B35"))
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
+            Spacer()
         }
     }
 }

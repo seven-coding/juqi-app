@@ -106,7 +106,6 @@ struct BlackListView: View {
         } catch {
             print("Failed to load black list: \(error)")
         }
-        applyMockBlackListIfNeeded()
         isLoading = false
     }
     
@@ -139,17 +138,6 @@ struct BlackListView: View {
         }
     }
     
-    private func applyMockBlackListIfNeeded() {
-#if DEBUG
-        guard users.isEmpty else { return }
-        users = [
-            User(id: "mock_black_001", userName: "夜色温柔", avatar: nil, signature: "已拉黑 · 请勿打扰", isVip: false),
-            User(id: "mock_black_002", userName: "长岛冰茶", avatar: nil, signature: "已拉黑 · 屏蔽动态", isVip: false),
-            User(id: "mock_black_003", userName: "雨声纸上", avatar: nil, signature: "已拉黑 · 不再推荐", isVip: true)
-        ]
-        hasMore = false
-#endif
-    }
 }
 
 struct BlackUserRowView: View {
@@ -177,10 +165,25 @@ struct BlackUserRowView: View {
                     .frame(width: 48, height: 48)
                     .clipShape(Circle())
                     
-                    // 用户名
-                    Text(user.userName.isEmpty ? "匿名用户" : user.userName)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white)
+                    // 用户名（含会员标识）和个人简介
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(user.userName.isEmpty ? "匿名用户" : user.userName)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                            if user.isVip {
+                                Image(systemName: "crown.fill")
+                                    .foregroundColor(Color(hex: "#FFD700"))
+                                    .font(.system(size: 12))
+                            }
+                        }
+                        if let signature = user.signature, !signature.isEmpty {
+                            Text(signature)
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(hex: "#71767A"))
+                                .lineLimit(1)
+                        }
+                    }
                     
                     Spacer()
                 }

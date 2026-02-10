@@ -10,7 +10,7 @@
     { "name": "publishDyn", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
     { "name": "likeOrUnlikeV2", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
     { "name": "delDyn", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
-    { "name": "getMessagesNew", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
+    { "name": "getMessagesNew", "timeout": 60, "runtime": "Nodejs16.13", "installDependency": true },
     { "name": "setMessage", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
     { "name": "getCircle", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },
     { "name": "getCircleDetail", "timeout": 30, "runtime": "Nodejs16.13", "installDependency": true },

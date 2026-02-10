@@ -1,22 +1,17 @@
-// 消息处理
+const cloud = require('wx-server-sdk');
+cloud.init();
+const { errorCode } = require('./utils/errorCode');
+const { setMesType, getMesType } = require('./utils/messagesType');
+const { setMesUser } = require('./utils/messagesUser');
 
-const cloud = require('wx-server-sdk')
-cloud.init()
-const db = cloud.database()
-const {
-  errorCode
-} = require('./utils/errorCode')
-const {
-  setMesType,
-  getMesType
-} = require('./utils/messagesType')
-const {
-  setMesUser,
-} = require('./utils/messagesUser')
-const _ = db.command;
+function getDb() {
+  return global.__SETMESSAGE_DB__ || (cloud.init(), cloud.database());
+}
 
 // 消息状态，status： 1 已读  3 删除
 async function setMes(event, openId) {
+  const db = getDb();
+  const _ = db.command;
   let { mesTypeId, status, mesType, groupType } = event;
 
   if (!mesTypeId || !status) {

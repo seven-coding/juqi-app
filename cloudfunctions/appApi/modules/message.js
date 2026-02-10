@@ -42,15 +42,69 @@ function formatNotReadCount(notReadCount) {
 }
 
 /**
+ * 将 getMessagesNew 聚合结果格式化为 iOS Message 模型期望的顶层字段
+ * 核心层返回的是 DB 聚合结构：user/userInfo 在数组里，无顶层 fromName/fromPhoto
+ */
+function toId(v) {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object' && v.$oid) return v.$oid;
+  if (typeof v === 'object' && v.id) return String(v.id);
+  return String(v);
+}
+
+function formatMessagesForApp(rawMessages) {
+  if (!Array.isArray(rawMessages) || rawMessages.length === 0) return rawMessages;
+  return rawMessages.map((m) => {
+    const user = (m.user && m.user[0]) || (m.userInfo && m.userInfo[0]) || {};
+    const msgInfo = (m.messageInfo && m.messageInfo[0]) || {};
+    const id = toId(m._id);
+    return {
+      _id: id,
+      from: m.from || '',
+      fromName: user.nickName ?? '',
+      fromPhoto: user.avatar ?? user.photo ?? null,
+      type: m.type ?? m.groupType ?? 0,
+      message: m.message ?? msgInfo.message ?? null,
+      msgText: m.msgText ?? msgInfo.message ?? m.message ?? null,
+      createTime: m.createTime,
+      formatDate: m.formatDate ?? null,
+      status: m.status ?? 0,
+      noReadCount: m.noReadCount ?? 0,
+      groupType: m.groupType ?? null,
+      groupId: m.groupId ?? null,
+      url: m.url ?? null,
+      chatId: m.chatId ?? null,
+      dynId: m.dynId != null ? toId(m.dynId) : null,
+      user: m.user,
+      circles: m.circles,
+      userInfo: m.userInfo,
+      messageInfo: m.messageInfo,
+      riskControlReason: m.riskControlReason ?? null
+    };
+  });
+}
+
+/**
  * 获取消息列表
  * 核心层: getMessagesNew
  */
+function maskOpenId(openId) {
+  if (!openId || typeof openId !== 'string') return 'nil';
+  if (openId.length <= 4) return '****';
+  return '****' + openId.slice(-4);
+}
+
 async function GetMessageList(event) {
   try {
-    const { openId, data, db } = event;
-    const { page = 1, limit = 20, type, from } = data || {};
+    const { openId, data, db, dataEnv } = event;
+    const { page = 1, limit = 20, type, from, aitType, skipNotReadCount } = data || {};
 
-    // 参数标准化
+    // 传参日志：ID 与关键参数，便于排查“无数据”是否与 openId 有关
+    console.log('[appGetMessageList] 传参 openId=', maskOpenId(openId), ', openId类型=', typeof openId, ', 长度=', (openId && openId.length) || 0, ', 空=', !openId || openId === '');
+    console.log('[appGetMessageList] 传参 dataEnv=', dataEnv || 'test', ', page=', page, ', limit=', limit, ', type=', type !== undefined ? type : 'nil(首屏)', ', from=', from || 'nil', ', aitType=', aitType !== undefined ? aitType : 'nil');
+
+    // 参数标准化（含 dataEnv：测试环境函数读线上数据时传 dataEnv=prod）
     const coreParams = {
       openId: openId,
       ownOpenId: openId,
@@ -66,44 +120,58 @@ async function GetMessageList(event) {
       coreParams.from = from;
     }
 
-    console.log('[appGetMessageList] 调用核心层参数:', coreParams);
+    if (aitType !== undefined) {
+      coreParams.aitType = aitType;
+    }
 
-    // 调用核心层
+    if (dataEnv) {
+      coreParams.dataEnv = dataEnv;
+    }
+
+    if (skipNotReadCount === true) {
+      coreParams.skipNotReadCount = true;
+    }
+
+    // 调用核心层前打印（openId 已脱敏）
+    const coreParamsLog = { ...coreParams, openId: maskOpenId(coreParams.openId), ownOpenId: maskOpenId(coreParams.ownOpenId) };
+    console.log('[appGetMessageList] 调用核心层 coreParams(脱敏):', JSON.stringify(coreParamsLog));
+
+    // 调用核心层（getMessagesNew 会根据 dataEnv 切换数据库环境）
     const result = await cloud.callFunction({
       name: 'getMessagesNew',
       data: coreParams
     });
 
-    console.log('[appGetMessageList] 核心层返回:', JSON.stringify(result.result));
+    const rawList = result.result.messages || [];
+    const rawCount = result.result.count;
+    console.log('[appGetMessageList] 核心层返回 rawMessages.length=', rawList.length, ', count=', rawCount, ', notReadCount=', result.result.notReadCount ? '有' : '无');
 
-    // 处理错误（如果核心层返回 code 非 200）
-    // 对于 400 "查询失败" 错误，返回空数据而不是报错（可能是测试用户没有消息数据）
+    // 核心层返回非 200 时返回可区分错误，便于客户端展示「加载失败/重试」而非「暂无消息」
     if (result.result.code && result.result.code !== 200) {
-      console.warn('[appGetMessageList] 核心层返回错误，返回空数据:', result.result.message);
-      // 返回空数据结构，让 iOS 可以正常解析
-      return success({
-        messages: [],
-        count: 0,
-        notReadCount: formatNotReadCount(null)
-      });
+      console.warn('[appGetMessageList] 核心层返回错误:', result.result.code, result.result.message);
+      const reason = (result.result.message || '').toLowerCase().includes('timeout') ? 'timeout' : 'query_fail';
+      return error(
+        result.result.code || 500,
+        result.result.message || '查询失败',
+        { reason }
+      );
     }
 
     // 格式化 notReadCount
     const formattedNotReadCount = formatNotReadCount(result.result.notReadCount);
+    const rawMessages = result.result.messages || [];
+    const messages = formatMessagesForApp(rawMessages);
+    console.log('[appGetMessageList] 格式化后条数:', messages.length, ', 原始条数:', rawMessages.length, ', 返回 count=', result.result.count || 0);
 
     return success({
-      messages: result.result.messages || [],
+      messages,
       count: result.result.count || 0,
       notReadCount: formattedNotReadCount
     });
   } catch (err) {
     console.error('[appGetMessageList] error:', err);
-    // 即使出错也返回空数据，避免 iOS 解析失败
-    return success({
-      messages: [],
-      count: 0,
-      notReadCount: formatNotReadCount(null)
-    });
+    const reason = (err.message || '').toLowerCase().includes('timeout') ? 'timeout' : 'request_failed';
+    return error(500, err.message || '服务器错误', { reason });
   }
 }
 
@@ -113,14 +181,14 @@ async function GetMessageList(event) {
  */
 async function SetMessage(event) {
   try {
-    const { openId, data, db } = event;
+    const { openId, data, db, dataEnv } = event;
     const { mesTypeId, mesType, status, grouptype, messFromType } = data || {};
 
     if (!mesTypeId || mesType === undefined || status === undefined) {
       return error(400, "缺少必需参数");
     }
 
-    // 参数标准化
+    // 参数标准化（含 dataEnv：与 getMessagesNew 一致，写库环境）
     const coreParams = {
       type: 1, // 1=设置消息状态
       status: status, // 1=已读，3=删除
@@ -135,6 +203,10 @@ async function SetMessage(event) {
 
     if (messFromType !== undefined) {
       coreParams.messFromType = messFromType;
+    }
+
+    if (dataEnv) {
+      coreParams.dataEnv = dataEnv;
     }
 
     console.log('[appSetMessage] 调用核心层参数:', coreParams);
@@ -163,20 +235,25 @@ async function SetMessage(event) {
  */
 async function GetUnreadCount(event) {
   try {
-    const { openId, data, db } = event;
+    const { openId, data, db, dataEnv } = event;
+
+    console.log('[appGetUnreadCount] 入参 openId(尾4)=', maskOpenId(openId), ', dataEnv=', dataEnv || 'test');
+
+    const coreParams = {
+      openId: openId,
+      ownOpenId: openId,
+      page: 1,
+      limit: 1
+    };
+    if (dataEnv) coreParams.dataEnv = dataEnv;
 
     // 调用核心层
     const result = await cloud.callFunction({
       name: 'getMessagesNew',
-      data: {
-        openId: openId,
-        ownOpenId: openId,
-        page: 1,
-        limit: 1
-      }
+      data: coreParams
     });
 
-    console.log('[appGetUnreadCount] 核心层返回:', result.result);
+    console.log('[appGetUnreadCount] 核心层返回 notReadCount=', result.result && result.result.notReadCount ? '有' : '无');
 
     if (result.result.code !== 200) {
       return error(result.result.code || 500, result.result.message || '获取未读消息数失败');
@@ -192,11 +269,11 @@ async function GetUnreadCount(event) {
 }
 
 /**
- * 批量标记消息已读
+ * 批量标记消息已读（内部循环调用 setMessage，传 dataEnv 保证写库环境一致）
  */
 async function MarkMessagesRead(event) {
   try {
-    const { openId, data, db } = event;
+    const { openId, data, dataEnv } = event;
     const { messageIds, mesType } = data || {};
 
     if (!messageIds || !Array.isArray(messageIds) || messageIds.length === 0) {
@@ -208,23 +285,24 @@ async function MarkMessagesRead(event) {
     }
 
     const results = [];
+    const coreBase = {
+      type: 1,
+      status: 1, // 1=已读
+      mesType,
+      openId
+    };
+    if (dataEnv) coreBase.dataEnv = dataEnv;
 
     for (const mesTypeId of messageIds) {
       try {
         const result = await cloud.callFunction({
           name: 'setMessage',
-          data: {
-            type: 1,
-            status: 1, // 1=已读
-            mesTypeId: mesTypeId,
-            mesType: mesType,
-            openId: openId
-          }
+          data: { ...coreBase, mesTypeId }
         });
 
         results.push({
           mesTypeId,
-          success: result.result.code === 200
+          success: result.result && result.result.code === 200
         });
       } catch (err) {
         results.push({

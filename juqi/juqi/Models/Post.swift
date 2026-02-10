@@ -296,6 +296,8 @@ struct UserProfile: Identifiable, Codable {
     let blockedCount: Int? // 拉黑数
     /// 当前用户对该主页用户是否处于「隐身访问」（不留下访客痕迹），仅他人主页且 VIP 时有效
     let isInvisible: Bool?
+    /// 服务端明确返回的「是否本人」标识（如 GetCurrentUserProfile 返回 true），优先于 id==ownOpenId
+    let isOwnProfileFromAPI: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -328,10 +330,12 @@ struct UserProfile: Identifiable, Codable {
         case inviteCount
         case blockedCount
         case isInvisible
+        case isOwnProfileFromAPI = "isOwnProfile"
     }
     
-    // 判断是否是自己
+    // 判断是否是自己：优先用服务端返回的 isOwnProfile，否则用 id == ownOpenId
     var isOwnProfile: Bool {
+        if let fromAPI = isOwnProfileFromAPI { return fromAPI }
         guard let ownOpenId = ownOpenId else { return false }
         return id == ownOpenId
     }

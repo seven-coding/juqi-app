@@ -62,7 +62,8 @@ struct Message: Identifiable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         from = try container.decode(String.self, forKey: .from)
-        fromName = try container.decode(String.self, forKey: .fromName)
+        // 兼容聚合结果：fromName/fromPhoto 可能在 user[0] 中，由服务端格式化后带出
+        fromName = try container.decodeIfPresent(String.self, forKey: .fromName) ?? ""
         fromPhoto = try container.decodeIfPresent(String.self, forKey: .fromPhoto)
         type = try container.decode(Int.self, forKey: .type)
         message = try container.decodeIfPresent(String.self, forKey: .message)
@@ -79,8 +80,8 @@ struct Message: Identifiable, Codable {
         }
         
         formatDate = try container.decodeIfPresent(String.self, forKey: .formatDate)
-        status = try container.decode(Int.self, forKey: .status)
-        noReadCount = try container.decode(Int.self, forKey: .noReadCount)
+        status = try container.decodeIfPresent(Int.self, forKey: .status) ?? 0
+        noReadCount = try container.decodeIfPresent(Int.self, forKey: .noReadCount) ?? 0
         groupType = try container.decodeIfPresent(Int.self, forKey: .groupType)
         groupId = try container.decodeIfPresent(Int.self, forKey: .groupId)
         url = try container.decodeIfPresent(String.self, forKey: .url)
@@ -164,6 +165,84 @@ struct Message: Identifiable, Codable {
         try container.encodeIfPresent(userInfo, forKey: .userInfo)
         try container.encodeIfPresent(messageInfo, forKey: .messageInfo)
         try container.encodeIfPresent(riskControlReason, forKey: .riskControlReason)
+    }
+}
+
+// MARK: - 消息类型常量（与云函数 getMessagesNew type 约定一致）
+enum MessageTypeConstant {
+    static let unreadSummary = 1
+    static let firstScreen = 2
+    static let charge = 3
+    static let comment = 4
+    static let visit = 5
+    static let follow = 6
+    static let cards = 7
+    static let circle = 8
+    static let commentLike = 9
+    static let wechatApply = 10
+    static let at = 11
+}
+
+// MARK: - 消息展示格式化（首屏与分类页共用）
+extension Message {
+    /// 根据 type 生成 msgText 并补全 formatDate，供列表展示
+    static func formatForDisplay(_ message: Message) -> Message {
+        var msgText = message.msgText ?? message.message ?? ""
+        switch message.type {
+        case 1: msgText = "设置圈子信息"
+        case 2: msgText = "你成为了管理员"
+        case 3: msgText = "你被取消了管理员资格"
+        case 4: msgText = "你被管理员\(message.fromName)踢出了本电站"
+        case 5: msgText = "你的帖子被加精了"
+        case 6: msgText = "你的帖子被拒绝/取消加精了"
+        case 7: msgText = "你的帖子被电站屏蔽了"
+        case 8: msgText = "你的帖子被电站取消屏蔽了"
+        case 9: msgText = "风控"
+        case 10: msgText = "你的帖子被置顶了"
+        case 11: msgText = "你的帖子被取消置顶了"
+        case 12: msgText = "你的加入申请已被通过了"
+        case 13: msgText = "你的加入申请被拒绝，还请仔细阅读电站说明"
+        case 14: msgText = "你的投稿被通过了"
+        case 15: msgText = "你的投稿被拒绝了"
+        case 16:
+            if let user = message.user?.first {
+                msgText = "\(user.nickName ?? "")关注了你"
+            }
+        case 17: msgText = "有人对你取消关注"
+        case 18:
+            if let messageText = message.message {
+                msgText = messageText
+            } else if let reason = message.riskControlReason {
+                msgText = reason
+            } else if let infoMsg = message.messageInfo?.first?.message {
+                msgText = infoMsg
+            }
+        case 19: msgText = "你的评论被点赞了"
+        default: msgText = message.message ?? message.msgText ?? ""
+        }
+        return Message(
+            id: message.id,
+            from: message.from,
+            fromName: message.fromName,
+            fromPhoto: message.fromPhoto,
+            type: message.type,
+            message: message.message,
+            msgText: msgText,
+            createTime: message.createTime,
+            formatDate: message.createTime.formatMessageDate(),
+            status: message.status,
+            noReadCount: message.noReadCount,
+            groupType: message.groupType,
+            groupId: message.groupId,
+            url: message.url,
+            chatId: message.chatId,
+            dynId: message.dynId,
+            user: message.user,
+            circles: message.circles,
+            userInfo: message.userInfo,
+            messageInfo: message.messageInfo,
+            riskControlReason: message.riskControlReason
+        )
     }
 }
 

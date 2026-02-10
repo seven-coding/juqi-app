@@ -8,14 +8,18 @@
 import SwiftUI
 
 struct CommentMessageView: View {
-    @StateObject private var viewModel = MessageCategoryViewModel(messageType: 4)
+    @StateObject private var viewModel = MessageCategoryViewModel(messageType: MessageTypeConstant.comment)
     
     var body: some View {
         ZStack {
             Color(hex: "#000000")
                 .ignoresSafeArea()
             
-            if viewModel.isEmpty && !viewModel.isLoading {
+            if viewModel.loadFailed && !viewModel.isLoading {
+                MessageLoadFailedView(message: viewModel.loadFailedMessage) {
+                    viewModel.refresh()
+                }
+            } else if viewModel.isEmpty && !viewModel.isLoading {
                 EmptyStateView(
                     icon: "bubble.left.and.bubble.right",
                     title: "暂无评论消息",

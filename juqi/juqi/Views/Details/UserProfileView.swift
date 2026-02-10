@@ -11,7 +11,9 @@ import UIKit
 struct UserProfileView: View {
     let userId: String
     let userName: String
-    
+    /// 从设置页进「我的主页」时为 true，直接用 getCurrentUserProfile 避免 profile.id 错误导致 404
+    var isOwnProfile: Bool = false
+
     @Environment(\.dismiss) private var dismiss
     @State private var userProfile: UserProfile?
     @State private var posts: [Post] = []
@@ -76,12 +78,16 @@ struct UserProfileView: View {
             }
         }
         .task {
-            // 先获取当前用户ID
+            print("📥 [UserProfileView] .task 入口 isOwnProfile=\(isOwnProfile), userId=\(userId)")
             await loadCurrentUserId()
-            // 并行加载用户信息和动态
-            async let _profile: Void = loadUserProfile()
-            async let _posts: Void = loadUserPosts()
-            _ = await (_profile, _posts)
+            if isOwnProfile {
+                await loadUserProfile()
+                await loadUserPosts()
+            } else {
+                async let _profile: Void = loadUserProfile()
+                async let _posts: Void = loadUserPosts()
+                _ = await (_profile, _posts)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PostDetailDidPinChange"))) { _ in
             if userProfile?.isOwnProfile == true {
@@ -463,11 +469,7 @@ struct UserProfileView: View {
             .refreshable {
                 await loadUserProfile()
             }
-            
-            // 底部操作栏（查看他人主页时显示）
-            if currentUserId != nil && currentUserId != userId {
-                bottomActionBarForDefault
-            }
+            // 未加载到 profile 时不显示底部栏；加载成功后由 normalContentView 根据 profile.isOwnProfile 控制
         }
     }
     
@@ -1010,10 +1012,18 @@ struct UserProfileView: View {
             print("Failed to load current user ID: \(error)")
         }
     }
-    
+
     private func loadUserProfile() async {
+        print("📥 [UserProfileView] loadUserProfile 入口 isOwnProfile=\(isOwnProfile), userId=\(userId)")
         do {
-            let profile = try await APIService.shared.getUserProfile(userId: userId)
+            let profile: UserProfile
+            if isOwnProfile {
+                profile = try await APIService.shared.getCurrentUserProfile()
+                print("📥 [UserProfileView] loadUserProfile getCurrentUserProfile 成功 profile.id=\(profile.id)")
+            } else {
+                profile = try await APIService.shared.getUserProfile(userId: userId)
+                print("📥 [UserProfileView] loadUserProfile getUserProfile(\(userId)) 成功 profile.id=\(profile.id)")
+            }
             await MainActor.run {
                 userProfile = profile
             }
@@ -1021,23 +1031,25 @@ struct UserProfileView: View {
                 try? await APIService.shared.recordVisit(userId: userId)
             }
         } catch {
-            print("Failed to load user profile: \(error)")
-            // 即使加载失败，也不阻止显示默认内容
+            print("❌ [UserProfileView] loadUserProfile 失败 isOwnProfile=\(isOwnProfile), userId=\(userId), error=\(error)")
         }
     }
-    
+
     private func loadUserPosts() async {
+        let targetUserId = (isOwnProfile ? userProfile?.id : nil) ?? userId
+        print("📥 [UserProfileView] loadUserPosts 入口 isOwnProfile=\(isOwnProfile), userId=\(userId), userProfile?.id=\(userProfile?.id ?? "nil"), targetUserId=\(targetUserId)")
         await MainActor.run { isLoadingPosts = true }
         do {
-            let response = try await APIService.shared.getUserDynList(userId: userId, publicTime: nil)
+            let response = try await APIService.shared.getUserDynList(userId: targetUserId, publicTime: nil)
             await MainActor.run {
                 posts = response.list
                 publicTime = response.publicTime
                 hasMore = response.hasMore
                 isLoadingPosts = false
             }
+            print("📥 [UserProfileView] loadUserPosts 成功 targetUserId=\(targetUserId), listCount=\(response.list.count), hasMore=\(response.hasMore)")
         } catch {
-            print("Failed to load user posts: \(error)")
+            print("❌ [UserProfileView] loadUserPosts 失败 targetUserId=\(targetUserId), error=\(error)")
             await MainActor.run {
                 posts = []
                 isLoadingPosts = false
@@ -1053,21 +1065,24 @@ struct UserProfileView: View {
     }
     
     private func loadMorePosts() async {
-        guard !isLoading && hasMore else { return }
-        isLoading = true
+        let targetUserId = (isOwnProfile ? userProfile?.id : nil) ?? userId
         let cursor = publicTime
+        print("📥 [UserProfileView] loadMorePosts 入口 targetUserId=\(targetUserId), publicTime=\(cursor ?? 0)")
+        await MainActor.run { isLoading = true }
         do {
-            let response = try await APIService.shared.getUserDynList(userId: userId, publicTime: cursor)
+            let response = try await APIService.shared.getUserDynList(userId: targetUserId, publicTime: cursor)
             await MainActor.run {
                 let existingIds = Set(posts.map(\.id))
                 posts.append(contentsOf: response.list.filter { !existingIds.contains($0.id) })
                 publicTime = response.publicTime
                 hasMore = response.hasMore
+                isLoading = false
             }
+            print("📥 [UserProfileView] loadMorePosts 成功 targetUserId=\(targetUserId), appended=\(response.list.count), hasMore=\(response.hasMore)")
         } catch {
-            print("Failed to load more posts: \(error)")
+            print("❌ [UserProfileView] loadMorePosts 失败 targetUserId=\(targetUserId), error=\(error)")
+            await MainActor.run { isLoading = false }
         }
-        isLoading = false
     }
     
     // MARK: - 私聊跳转（获取/创建会话后切到消息 Tab）
@@ -1132,40 +1147,17 @@ struct UserProfileView: View {
     }
 }
 
-// MARK: - 辅助结构
-struct ActionSheetItem: Identifiable {
-    let id = UUID()
+// MARK: - 更多操作项（与 actionSheet 配合）
+private struct ActionSheetItem {
     let title: String
     let action: () -> Void
 }
 
-// MARK: - 充电提示视图
-struct ChargeTipsView: View {
-    @Environment(\.dismiss) private var dismiss
-    
+// MARK: - 充电说明浮层（占位，后续可替换为完整 UI）
+private struct ChargeTipsView: View {
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "battery.100")
-                .font(.system(size: 60))
-                .foregroundColor(Color(hex: "#FF6B35"))
-            
-            Text("这是你获得的电量之和，代表你受喜欢的程度，也将获得我们更多的推荐")
-                .font(.system(size: 14))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-            
-            Button("我知道了") {
-                dismiss()
-            }
-            .font(.system(size: 16, weight: .bold))
+        Text("充电说明")
             .foregroundColor(.white)
-            .padding(.horizontal, 40)
-            .padding(.vertical, 12)
-            .background(Color(hex: "#FF6B35"))
-            .cornerRadius(20)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(hex: "#000000"))
+            .padding()
     }
 }

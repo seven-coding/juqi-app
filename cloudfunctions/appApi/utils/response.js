@@ -129,12 +129,13 @@ function internalError(err, context = '服务器错误') {
     timestamp: Date.now()
   });
   
+  // 始终返回 data: null，避免客户端将错误响应当作成功结构（如 LoginData）解码失败
   return error(
     ERROR_CODES.INTERNAL_ERROR,
-    process.env.NODE_ENV === 'production' 
-      ? '服务器内部错误，请稍后重试' 
+    process.env.NODE_ENV === 'production'
+      ? '服务器内部错误，请稍后重试'
       : `${context}: ${err.message}`,
-    process.env.NODE_ENV === 'production' ? null : { stack: err.stack },
+    null,
     errorId
   );
 }

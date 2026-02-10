@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query, HttpCode, HttpStatus } from '@nestjs/common';
 import { AppService } from './app.service';
 import { CurrentUser, CurrentUserInfo, SkipAuth } from '../../decorators/current-user.decorator';
 
@@ -16,8 +16,10 @@ export class AppController {
   /**
    * 统一 API 入口（混合路由）
    * 根据迁移配置自动选择直连数据库或云函数
+   * 使用 200 以便客户端统一按 JSON body 解析（避免 201 导致部分网关/客户端异常）
    */
   @Post('api')
+  @HttpCode(HttpStatus.OK)
   async api(
     @Body() body: AppApiRequest,
     @CurrentUser() user: CurrentUserInfo,

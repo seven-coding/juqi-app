@@ -39,7 +39,7 @@ async function Login(event) {
     // 固定测试 code：按数据源返回对应 openId（App 设置页可切换测试/正式数据源）
     const TEST_APP_CODE = 'test_app_debug';
     const TEST_APP_OPENID = 'test_openid_app';           // 测试环境数据源
-    const TEST_APP_OPENID_PROD = 'onosB5tACzoeLWFjfurUEPweaAU0'; // 正式环境数据源
+    const TEST_APP_OPENID_PROD = 'onosB5lRKgCjonoNbj9peqM--e2Q'; // 正式环境数据源
 
     const dataEnv = event.dataEnv || 'test';
     if (code === TEST_APP_CODE) {
@@ -159,23 +159,27 @@ async function Login(event) {
     // 获取会员状态
     const vipStatus = user.usersSecret && user.usersSecret[0] && user.usersSecret[0].vipStatus || false;
     
-    // 获取试用期信息
+    // 获取试用期信息（正式环境可能无 trial_periods 集合，失败时仅跳过试用期逻辑）
     let trialStartTime = null;
     if (!vipStatus && user.joinStatus === 1) {
-      const trialRecord = await db.collection('trial_periods').where({ openId }).get();
-      if (trialRecord.data.length === 0) {
-        trialStartTime = Date.now();
-        await db.collection('trial_periods').add({
-          data: {
-            openId,
-            startTime: db.serverDate(),
-            startTimestamp: trialStartTime,
-            days: 7,
-            createdAt: db.serverDate()
-          }
-        });
-      } else {
-        trialStartTime = trialRecord.data[0].startTimestamp;
+      try {
+        const trialRecord = await db.collection('trial_periods').where({ openId }).get();
+        if (trialRecord.data.length === 0) {
+          trialStartTime = Date.now();
+          await db.collection('trial_periods').add({
+            data: {
+              openId,
+              startTime: db.serverDate(),
+              startTimestamp: trialStartTime,
+              days: 7,
+              createdAt: db.serverDate()
+            }
+          });
+        } else {
+          trialStartTime = trialRecord.data[0].startTimestamp;
+        }
+      } catch (trialErr) {
+        console.warn('[appLogin] trial_periods 不可用，跳过试用期逻辑:', trialErr.message);
       }
     }
 

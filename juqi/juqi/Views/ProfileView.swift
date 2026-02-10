@@ -8,6 +8,12 @@
 import SwiftUI
 import UIKit
 
+/// 个人主页导航目标：从设置页点「发布」进自己主页时传 isOwn=true，避免用可能错误的 profile.id 导致 404
+struct ProfileDestination: Hashable {
+    let userId: String
+    let isOwn: Bool
+}
+
 struct ProfileView: View {
     @State private var userProfile: UserProfile?
     @State private var isLoading = true
@@ -16,7 +22,7 @@ struct ProfileView: View {
     @State private var showInviteFriends = false
     @State private var showLobby = false
     @State private var showAbout = false
-    @State private var navigateToUserProfile: String?
+    @State private var navigateToUserProfile: ProfileDestination?
     @State private var showFollowList = false
     @State private var showFollowerList = false
     @State private var showChargeList = false
@@ -61,8 +67,8 @@ struct ProfileView: View {
             }
         }
         .task { await loadUserProfile() }
-        .navigationDestination(item: $navigateToUserProfile) { userId in
-            UserProfileView(userId: userId, userName: userProfile?.userName ?? "匿名用户")
+        .navigationDestination(item: $navigateToUserProfile) { dest in
+            UserProfileView(userId: dest.userId, userName: userProfile?.userName ?? "匿名用户", isOwnProfile: dest.isOwn)
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .sheet(isPresented: $showPersonalizationSettings) { PersonalizationSettingsView() }
@@ -239,8 +245,8 @@ struct ProfileView: View {
         VStack(spacing: 32) {
             HStack(spacing: 0) {
                 statBox(title: "发布", value: "\(profile?.publishCount ?? 0)") {
-                    if let userId = profile?.id {
-                        navigateToUserProfile = userId
+                    if let uid = profile?.id {
+                        navigateToUserProfile = ProfileDestination(userId: uid, isOwn: true)
                     }
                 }
                 statBox(title: "电量", value: "\(profile?.chargeNums ?? 0)") {

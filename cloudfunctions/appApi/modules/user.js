@@ -152,6 +152,7 @@ function convertDynToAppFormat(dyn, currentOpenId) {
 async function GetCurrentUserProfile(event) {
   try {
     const { openId, data, db } = event;
+    console.log('[appGetCurrentUserProfile] 入口 openId=', openId, 'dataEnv=', event.dataEnv, 'data=', JSON.stringify(data || {}));
 
     // 调用核心层：必须传 source: 'newApp'，否则 login 会用 getWXContext().OPENID 作为 ownOpenId；
     // 在 HTTP 触发的 appApi 链中无微信上下文，导致 ownOpenId 为空、isOwn 为 false，误走「查询他人」分支而失败。
@@ -181,6 +182,42 @@ async function GetCurrentUserProfile(event) {
     
     console.log('[appGetCurrentUserProfile] userInfo 原始数据:', JSON.stringify(userInfo));
 
+    // 稳定用户 id 与统计数据：dataEnv=prod 时 login 返回的是测试环境数据，id/粉丝/关注/收藏/邀请/拉黑等均需用生产库重新取。
+    let stableUserId = userInfo._id || userInfo.openId || openId;
+    const dataEnv = event.dataEnv || 'test';
+    let prodOverrides = null; // dataEnv=prod 时从生产库查得的 id + 各类统计，用于覆盖 login 返回值
+    if (dataEnv === 'prod' && db) {
+      try {
+        const prodUserRes = await db.collection('user').where({ openId }).limit(1).get();
+        if (prodUserRes.data && prodUserRes.data.length > 0) {
+          const prodUser = prodUserRes.data[0];
+          if (prodUser._id) {
+            stableUserId = prodUser._id;
+            console.log('[appGetCurrentUserProfile] dataEnv=prod，已用生产库 _id 作为 profile.id');
+          }
+          // 粉丝数、关注数、发布数、收藏、邀请、拉黑：均从生产库实时统计或从生产 user 表取，与 GetUserProfile 一致
+          const [followCountRes, followerCountRes, publishCountRes, collectionCountRes, blockedCountRes] = await Promise.all([
+            db.collection('user_followee').where({ openId, status: 1 }).count(),
+            db.collection('user_followee').where({ followeeId: openId, status: 1 }).count(),
+            db.collection('dyn').where({ openId }).count(),
+            db.collection('dynFavorite').where({ openId, favoriteFlag: '0' }).count(),
+            db.collection('user_black').where({ openId }).count()
+          ]);
+          prodOverrides = {
+            followCount: followCountRes.total ?? 0,
+            followerCount: followerCountRes.total ?? 0,
+            publishCount: publishCountRes.total ?? prodUser.dynNums ?? prodUser.publishCount ?? 0,
+            collectionCount: collectionCountRes.total ?? prodUser.collectionCount ?? 0,
+            inviteCount: prodUser.inviteCount ?? 0,
+            blockedCount: blockedCountRes.total ?? prodUser.blockedCount ?? 0
+          };
+          console.log('[appGetCurrentUserProfile] dataEnv=prod，已从生产库填充统计:', prodOverrides);
+        }
+      } catch (e) {
+        console.warn('[appGetCurrentUserProfile] dataEnv=prod 时查生产 user/统计失败，沿用 login 返回:', e.message);
+      }
+    }
+
     // 转换头像 URL
     let avatarUrl = userInfo.avatarVisitUrl || userInfo.avatarUrl || null;
     if (avatarUrl && isCloudUrl(avatarUrl)) {
@@ -205,13 +242,13 @@ async function GetCurrentUserProfile(event) {
     // iOS 必填字段: id, userName, isVip, followCount, followerCount
     // id 使用稳定用户标识：优先 _id（与登录方式解耦，便于未来支持手机号/邮箱等无 openId 的注册）
     const profile = {
-      // 必填字段（稳定用户 id：优先 _id，其次 openId）
-      id: userInfo._id || userInfo.openId || openId,
+      // 必填字段（稳定用户 id：dataEnv=prod 时已用生产库 _id，否则 _id/openId）
+      id: stableUserId,
       userName: userInfo.nickName || userInfo.userName || '未知用户',
       avatar: avatarUrl,
       isVip: !!isVip,
-      followCount: toInt(userInfo.followCount || userInfo.followNums),
-      followerCount: toInt(userInfo.followerCount || userInfo.fansNums),
+      followCount: prodOverrides ? prodOverrides.followCount : toInt(userInfo.followCount || userInfo.followNums),
+      followerCount: prodOverrides ? prodOverrides.followerCount : toInt(userInfo.followerCount || userInfo.fansNums),
       
       // 可选字段（与小程序/数据库字段一致）
       signature: userInfo.signature || null,
@@ -237,15 +274,17 @@ async function GetCurrentUserProfile(event) {
       imgList: userInfo.imgList || userInfo.backgroundImg || null,
       bindUserInfo: userInfo.bindUserInfo || null,
       ownOpenId: openId,
-      
-      // 统计数据
-      publishCount: toInt(result.result.publishCount || userInfo.publishCount),
-      collectionCount: toInt(userInfo.collectionCount),
-      inviteCount: toInt(userInfo.inviteCount),
-      blockedCount: toInt(userInfo.blockedCount)
+      // 明确标记本人，避免客户端用 id/ownOpenId 比较时因 id 为生产库 _id 而误判
+      isOwnProfile: true,
+
+      // 统计数据（dataEnv=prod 时已用生产库统计覆盖）
+      publishCount: prodOverrides ? prodOverrides.publishCount : toInt(result.result.publishCount || userInfo.publishCount),
+      collectionCount: prodOverrides ? prodOverrides.collectionCount : toInt(userInfo.collectionCount),
+      inviteCount: prodOverrides ? prodOverrides.inviteCount : toInt(userInfo.inviteCount),
+      blockedCount: prodOverrides ? prodOverrides.blockedCount : toInt(userInfo.blockedCount)
     };
 
-    console.log('[appGetCurrentUserProfile] 返回 profile:', JSON.stringify(profile));
+    console.log('[appGetCurrentUserProfile] 返回 profile.id=', profile.id, 'userName=', profile.userName);
 
     // iOS 期望响应在 data 对象中直接包含 profile
     return success(profile);
@@ -263,6 +302,14 @@ function isMongoObjectId(str) {
 }
 
 /**
+ * 判断是否为「类 _id」格式（24 或 32 位十六进制）。
+ * 腾讯云/部分库用 32 位 hex 作为 _id，仅 24 位会漏掉导致按 openId 查 dyn 得 0 条。
+ */
+function isLikelyDocId(str) {
+  return typeof str === 'string' && /^[a-fA-F0-9]{24}$/.test(str) || /^[a-fA-F0-9]{32}$/.test(str);
+}
+
+/**
  * 将「用户 id」解析为 openId（支持 user 表 _id 或 openId）
  * 供需要调核心层（仅认 openId）的接口复用，便于未来无 openId 的注册方式。
  * @param {Object} db - 数据库实例
@@ -271,9 +318,16 @@ function isMongoObjectId(str) {
  */
 async function resolveUserIdToOpenId(db, userId) {
   if (!userId) return null;
-  if (isMongoObjectId(userId)) {
-    const res = await db.collection('user').doc(userId).get();
-    return (res.data && res.data.openId) ? res.data.openId : null;
+  if (isLikelyDocId(userId)) {
+    try {
+      const res = await db.collection('user').doc(userId).get();
+      const openId = (res.data && res.data.openId) ? res.data.openId : null;
+      if (openId) console.log('[resolveUserIdToOpenId] _id=', userId, '-> openId=', openId);
+      return openId;
+    } catch (e) {
+      console.warn('[resolveUserIdToOpenId] doc.get 失败 userId=', userId, e.message);
+      return null;
+    }
   }
   return userId; // 视为 openId 直接返回
 }
@@ -323,7 +377,23 @@ async function getOperateActionWithDb(db, _, openId, otherOpenId) {
 async function GetUserProfile(event) {
   try {
     const { openId: currentOpenId, data, db } = event;
-    const requestUserId = (data || {}).userId;
+    const requestData = data || {};
+    const requestUserId = requestData.userId;
+    const isSelf = requestData.isSelf === true;
+
+    // 明确传 isSelf=true 时直接返回当前用户（避免 profile.id 为测试环境 _id 时在生产库解析失败 404）
+    if (isSelf) {
+      const selfEvent = { openId: currentOpenId, data: requestData, db, dataEnv: event.dataEnv, envId: event.envId };
+      const selfResult = await GetCurrentUserProfile(selfEvent);
+      if (selfResult.code !== 200) return selfResult;
+      const selfProfile = selfResult.data;
+      return success({
+        ...selfProfile,
+        followStatus: 1,
+        blackStatus: selfProfile.blackStatus || 1,
+        isInvisible: false
+      });
+    }
 
     if (!requestUserId) {
       return error(400, "缺少用户ID");
@@ -508,8 +578,10 @@ async function GetUserDynList(event) {
   try {
     const { openId, data, db } = event;
     const { userId, page = 1, limit = 20, publicTime } = data || {};
+    console.log('[appGetUserDynList] 入口 openId=', openId, 'data=', JSON.stringify({ userId, page, limit, publicTime }));
 
     const targetOpenId = userId ? (await resolveUserIdToOpenId(db, userId) || userId) : openId;
+    console.log('[appGetUserDynList] resolveUserIdToOpenId 结果 userId=', userId, 'targetOpenId=', targetOpenId);
 
     // 参数标准化
     const coreParams = {
@@ -519,14 +591,11 @@ async function GetUserDynList(event) {
       type: 4, // 4=用户动态列表
       limit: limit
     };
-
-    if (publicTime) {
-      coreParams.publicTime = publicTime;
-    }
+    if (event.envId) coreParams.envId = event.envId;
+    if (publicTime) coreParams.publicTime = publicTime;
 
     console.log('[appGetUserDynList] 调用核心层参数:', coreParams);
 
-    // 调用核心层
     const result = await cloud.callFunction({
       name: 'getDynsListV2',
       data: coreParams
@@ -545,6 +614,7 @@ async function GetUserDynList(event) {
     // 转换 cloud:// URL 为 HTTPS URL
     const finalList = await convertDynListUrls(convertedList);
     
+    console.log('[appGetUserDynList] 成功 userId=', userId, 'targetOpenId=', targetOpenId, 'listCount=', finalList.length, 'hasMore=', finalList.length >= limit);
     return success({
       list: finalList,
       total: result.result.count || 0,
@@ -552,7 +622,7 @@ async function GetUserDynList(event) {
       publicTime: result.result.publicTime
     });
   } catch (err) {
-    console.error('[appGetUserDynList] error:', err);
+    console.error('[appGetUserDynList] error userId=', event.data?.userId, err);
     return error(500, err.message || '服务器错误');
   }
 }
@@ -898,11 +968,13 @@ async function GetUserFollowStatus(event) {
 
 /**
  * 获取用户列表（关注/粉丝）
+ * 使用 event.db 直查，dataEnv=prod 时由 index 初始化生产库，保证读线上数据
  */
 async function GetUserList(event) {
   try {
     const { openId, data, db } = event;
-    const { type, openId: targetUserId, page = 1, limit = 20 } = data || {};
+    const { type, userId: dataUserId, openId: dataOpenId, page = 1, limit = 20 } = data || {};
+    const targetUserId = dataUserId || dataOpenId;
 
     if (!targetUserId) {
       return error(400, "缺少用户ID");
@@ -961,13 +1033,20 @@ async function GetUserList(event) {
       })
       .get();
 
-    const users = usersResult.data.map(user => ({
-      id: user.openId,
-      userName: user.nickName || '未知用户',
-      avatar: user.avatarVisitUrl || user.avatarUrl || null,
-      signature: user.signature || null,
-      isVip: user.usersSecret && user.usersSecret[0] && user.usersSecret[0].vipStatus || false
-    }));
+    const userMap = {};
+    usersResult.data.forEach(user => {
+      const sig = (user.signature && String(user.signature).trim()) || (user.labels && String(user.labels).trim()) || null;
+      const vip = (user.usersSecret && user.usersSecret[0] && user.usersSecret[0].vipStatus) || user.vipStatus || false;
+      userMap[user.openId] = {
+        id: user.openId,
+        userName: user.nickName || '未知用户',
+        avatar: user.avatarVisitUrl || user.avatarUrl || null,
+        signature: sig,
+        isVip: !!vip
+      };
+    });
+    // 按 followRecords 顺序（已 orderBy createTime desc）输出，保证「最新在最前」
+    const users = userIds.map(id => userMap[id]).filter(Boolean);
 
     // 转换头像 cloud:// URL 为 HTTPS URL
     const avatarUrls = users.map(u => u.avatar).filter(url => isCloudUrl(url));
@@ -1054,9 +1133,10 @@ async function UpdateUserInfo(event) {
 async function GetChargeList(event) {
   try {
     const { openId, data, db } = event;
-    const { userId, page = 1, limit = 20 } = data || {};
+    const { userId, openId: dataOpenId, page = 1, limit = 20 } = data || {};
+    const targetUserId = userId || dataOpenId;
 
-    const targetOpenId = userId ? (await resolveUserIdToOpenId(db, userId) || userId) : openId;
+    const targetOpenId = targetUserId ? (await resolveUserIdToOpenId(db, targetUserId) || targetUserId) : openId;
 
     const result = await cloud.callFunction({
       name: 'getUserList',
@@ -1071,14 +1151,17 @@ async function GetChargeList(event) {
 
     console.log('[appGetChargeList] 核心层返回:', result.result);
 
-    if (result.result.code !== 200) {
+    if (result.result && result.result.code !== undefined && result.result.code !== 200) {
       return error(result.result.code || 500, result.result.message || '获取充电列表失败');
     }
 
+    // 核心层 getUserList/getCharging 返回 { userList, page, limit, count, type }，无 list 字段
+    const rawList = result.result.userList || result.result.list || [];
+    const total = result.result.count ?? result.result.total ?? 0;
     return success({
-      list: result.result.list || [],
-      total: result.result.total || 0,
-      hasMore: (result.result.list || []).length >= limit
+      list: rawList,
+      total: total,
+      hasMore: rawList.length >= limit
     });
   } catch (err) {
     console.error('[appGetChargeList] error:', err);
@@ -1104,10 +1187,8 @@ async function GetFavoriteList(event) {
       type: 13, // 13=收藏列表
       limit: limit
     };
-
-    if (publicTime) {
-      coreParams.publicTime = publicTime;
-    }
+    if (event.envId) coreParams.envId = event.envId;
+    if (publicTime) coreParams.publicTime = publicTime;
 
     console.log('[appGetFavoriteList] 调用核心层参数:', coreParams);
 
@@ -1122,11 +1203,15 @@ async function GetFavoriteList(event) {
       return error(result.result.code || 500, result.result.message || '获取收藏列表失败');
     }
 
-    const dynList = result.result.dynList || [];
+    // 与 GetUserDynList 一致：核心层返回原始 dyn，需转为 App 格式并转换 cloud:// URL
+    const rawDynList = result.result.dynList || [];
+    const convertedList = rawDynList.map(dyn => convertDynToAppFormat(dyn, openId));
+    const finalList = await convertDynListUrls(convertedList);
+
     return success({
-      list: dynList,
+      list: finalList,
       total: result.result.count || 0,
-      hasMore: dynList.length >= limit,
+      hasMore: finalList.length >= limit,
       publicTime: result.result.publicTime
     });
   } catch (err) {
@@ -1137,36 +1222,85 @@ async function GetFavoriteList(event) {
 
 /**
  * 获取黑名单列表
- * 核心层: getUserList, type='black'
+ * 使用 event.db 直查，与 GetUserList 一致，保证 dataEnv=prod 时读生产库（不通过 callFunction 避免命中测试环境 getUserList）
  */
 async function GetBlackList(event) {
   try {
     const { openId, data, db } = event;
-    const { userId, page = 1, limit = 20 } = data || {};
+    const { userId, openId: dataOpenId, page = 1, limit = 20 } = data || {};
+    const targetUserId = userId || dataOpenId;
 
-    const targetOpenId = userId ? (await resolveUserIdToOpenId(db, userId) || userId) : openId;
+    const targetOpenId = targetUserId ? (await resolveUserIdToOpenId(db, targetUserId) || targetUserId) : openId;
 
-    const result = await cloud.callFunction({
-      name: 'getUserList',
-      data: {
-        openId: targetOpenId,
-        ownOpenId: openId,
-        type: 'black',
-        page: page,
-        limit: limit
-      }
+    const skip = (page - 1) * limit;
+
+    // 总数
+    const totalResult = await db.collection('user_black').where({ openId: targetOpenId }).count();
+    const total = totalResult.total;
+
+    const blackRecords = await db.collection('user_black')
+      .where({ openId: targetOpenId })
+      .orderBy('createTime', 'desc')
+      .skip(skip)
+      .limit(limit)
+      .get();
+
+    if (!blackRecords.data || blackRecords.data.length === 0) {
+      return success({
+        list: [],
+        total: total,
+        hasMore: false
+      });
+    }
+
+    const blackIds = blackRecords.data.map(r => r.blackId);
+    const _ = event._ || db.command;
+    const usersResult = await db.collection('user')
+      .where({ openId: _.in(blackIds) })
+      .get();
+
+    const blackUserMap = {};
+    usersResult.data.forEach(user => {
+      const sig = (user.signature && String(user.signature).trim()) || (user.labels && String(user.labels).trim()) || null;
+      const vip = (user.usersSecret && user.usersSecret[0] && user.usersSecret[0].vipStatus) || user.vipStatus || false;
+      blackUserMap[user.openId] = {
+        id: user.openId,
+        userName: user.nickName || '未知用户',
+        avatar: user.avatarVisitUrl || user.avatarUrl || null,
+        signature: sig,
+        isVip: !!vip
+      };
     });
+    // 按 blackRecords 顺序（已 orderBy createTime desc）输出，最新在最前
+    const users = blackIds.map(id => blackUserMap[id]).filter(Boolean);
 
-    console.log('[appGetBlackList] 核心层返回:', result.result);
-
-    if (result.result.code !== 200) {
-      return error(result.result.code || 500, result.result.message || '获取黑名单失败');
+    // 转换头像 cloud:// URL 为 HTTPS URL（与 GetUserList 一致）
+    const avatarUrls = users.map(u => u.avatar).filter(url => isCloudUrl(url));
+    if (avatarUrls.length > 0) {
+      try {
+        const urlResult = await cloud.getTempFileURL({ fileList: avatarUrls });
+        const urlMap = {};
+        if (urlResult.fileList) {
+          urlResult.fileList.forEach(fileInfo => {
+            if (fileInfo.status === 0 && fileInfo.tempFileURL) {
+              urlMap[fileInfo.fileID] = fileInfo.tempFileURL;
+            }
+          });
+        }
+        users.forEach(u => {
+          if (u.avatar && urlMap[u.avatar]) {
+            u.avatar = urlMap[u.avatar];
+          }
+        });
+      } catch (err) {
+        console.warn('[appGetBlackList] URL转换失败:', err.message);
+      }
     }
 
     return success({
-      list: result.result.list || [],
-      total: result.result.total || 0,
-      hasMore: (result.result.list || []).length >= limit
+      list: users,
+      total: total,
+      hasMore: skip + limit < total
     });
   } catch (err) {
     console.error('[appGetBlackList] error:', err);

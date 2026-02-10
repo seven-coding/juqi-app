@@ -209,12 +209,18 @@ struct UserRowView: View {
                     .frame(width: 48, height: 48)
                     .clipShape(Circle())
                     
-                    // 用户名和签名
+                    // 用户名（含会员标识）和个人简介
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(user.userName.isEmpty ? "匿名用户" : user.userName)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.white)
-                        
+                        HStack(spacing: 6) {
+                            Text(user.userName.isEmpty ? "匿名用户" : user.userName)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                            if user.isVip {
+                                Image(systemName: "crown.fill")
+                                    .foregroundColor(Color(hex: "#FFD700"))
+                                    .font(.system(size: 12))
+                            }
+                        }
                         if let signature = user.signature, !signature.isEmpty {
                             Text(signature)
                                 .font(.system(size: 12))

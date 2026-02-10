@@ -20,6 +20,23 @@ enum APIError: Error, Equatable {
     case serverError(Int)
     case unknown
     
+    /// 日志用：错误类型短标签（超时、解码失败、接口错误等），便于直接看出原因
+    var errorType: String {
+        switch self {
+        case .timeout: return "timeout"
+        case .offline: return "offline"
+        case .decodingError: return "decoding"
+        case .apiError: return "api_error"
+        case .tokenExpired: return "token_expired"
+        case .serverError: return "server_error"
+        case .networkError: return "network"
+        case .invalidURL: return "invalid_url"
+        case .invalidResponse: return "invalid_response"
+        case .noData: return "no_data"
+        case .unknown: return "unknown"
+        }
+    }
+
     var localizedDescription: String {
         switch self {
         case .invalidURL:

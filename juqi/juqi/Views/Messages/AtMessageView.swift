@@ -12,7 +12,7 @@ struct AtMessageView: View {
     @StateObject private var viewModel: MessageCategoryViewModel
     
     init() {
-        _viewModel = StateObject(wrappedValue: MessageCategoryViewModel(messageType: 11, aitType: 1))
+        _viewModel = StateObject(wrappedValue: MessageCategoryViewModel(messageType: MessageTypeConstant.at, aitType: 1))
     }
     
     var body: some View {
@@ -24,7 +24,11 @@ struct AtMessageView: View {
                 // 顶部Tab切换
                 tabBar
                 
-                if viewModel.isEmpty && !viewModel.isLoading {
+                if viewModel.loadFailed && !viewModel.isLoading {
+                    MessageLoadFailedView(message: viewModel.loadFailedMessage) {
+                        viewModel.refresh()
+                    }
+                } else if viewModel.isEmpty && !viewModel.isLoading {
                     EmptyStateView(
                         icon: "at",
                         title: "暂无艾特消息",

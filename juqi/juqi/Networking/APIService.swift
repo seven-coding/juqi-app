@@ -318,7 +318,8 @@ class APIService {
                 "id": postId,
                 "page": page,
                 "limit": limit
-            ]
+            ],
+            useCache: false
         )
     }
     
@@ -468,30 +469,41 @@ class APIService {
     /// 获取当前用户信息
     /// - Returns: 用户信息
     func getCurrentUserProfile() async throws -> UserProfile {
-        return try await NetworkService.shared.request(
+        print("📤 [APIService] getCurrentUserProfile 请求 operation=appGetCurrentUserProfile, data=[:]")
+        let profile: UserProfile = try await NetworkService.shared.request(
             operation: "appGetCurrentUserProfile"
         )
+        print("📤 [APIService] getCurrentUserProfile 成功 profile.id=\(profile.id)")
+        return profile
     }
-    
+
     /// 获取指定用户信息
     /// - Parameter userId: 用户ID
     /// - Returns: 用户信息
     func getUserProfile(userId: String) async throws -> UserProfile {
-        return try await NetworkService.shared.request(
+        print("📤 [APIService] getUserProfile 请求 operation=appGetUserProfile, data=[userId: \(userId)]")
+        let profile: UserProfile = try await NetworkService.shared.request(
             operation: "appGetUserProfile",
-            data: ["userId": userId]
+            data: ["userId": userId],
+            useCache: false
         )
+        print("📤 [APIService] getUserProfile 成功 userId=\(userId), profile.id=\(profile.id)")
+        return profile
     }
-    
+
     /// 获取用户动态列表（服务端游标分页：传 publicTime 加载下一页）
     func getUserDynList(userId: String? = nil, limit: Int = 20, publicTime: Double? = nil) async throws -> DynListResponse {
         var data: [String: Any] = ["limit": limit]
         if let uid = userId { data["userId"] = uid }
         if let cursor = publicTime { data["publicTime"] = cursor }
-        return try await NetworkService.shared.request(
+        print("📤 [APIService] getUserDynList 请求 operation=appGetUserDynList, data=\(data)")
+        let response: DynListResponse = try await NetworkService.shared.request(
             operation: "appGetUserDynList",
-            data: data
+            data: data,
+            useCache: false
         )
+        print("📤 [APIService] getUserDynList 成功 userId=\(userId ?? "nil"), listCount=\(response.list.count), hasMore=\(response.hasMore)")
+        return response
     }
     
     /// 给用户充电
@@ -570,7 +582,8 @@ class APIService {
     func getNoVisitList(page: Int = 1, limit: Int = 20) async throws -> NoVisitListResponse {
         try await NetworkService.shared.request(
             operation: "appGetNoVisitList",
-            data: ["page": page, "limit": limit]
+            data: ["page": page, "limit": limit],
+            useCache: false
         ) as NoVisitListResponse
     }
     
@@ -578,7 +591,8 @@ class APIService {
     func getNoSeeList(page: Int = 1, limit: Int = 20) async throws -> NoVisitListResponse {
         try await NetworkService.shared.request(
             operation: "appGetNoSeeList",
-            data: ["page": page, "limit": limit]
+            data: ["page": page, "limit": limit],
+            useCache: false
         ) as NoVisitListResponse
     }
     
@@ -586,7 +600,8 @@ class APIService {
     func getNoSeeMeList(page: Int = 1, limit: Int = 20) async throws -> NoVisitListResponse {
         try await NetworkService.shared.request(
             operation: "appGetNoSeeMeList",
-            data: ["page": page, "limit": limit]
+            data: ["page": page, "limit": limit],
+            useCache: false
         ) as NoVisitListResponse
     }
     
@@ -650,14 +665,16 @@ class APIService {
             typeString = "charging"
         }
         
+        // 不使用缓存：二级页列表需与入口数量一致，且 dataEnv 切换后必须用当前环境拉取
         return try await NetworkService.shared.request(
             operation: "appGetUserList",
             data: [
                 "type": typeString,
-                "openId": userId,
+                "userId": userId,
                 "page": page,
                 "limit": limit
-            ]
+            ],
+            useCache: false
         )
     }
     
@@ -671,10 +688,11 @@ class APIService {
         return try await NetworkService.shared.request(
             operation: "appGetChargeList",
             data: [
-                "openId": userId,
+                "userId": userId,
                 "page": page,
                 "limit": limit
-            ]
+            ],
+            useCache: false
         )
     }
     
@@ -684,7 +702,8 @@ class APIService {
         if let cursor = publicTime { data["publicTime"] = cursor }
         return try await NetworkService.shared.request(
             operation: "appGetFavoriteList",
-            data: data
+            data: data,
+            useCache: false
         )
     }
     
@@ -695,14 +714,15 @@ class APIService {
     ///   - limit: 每页数量
     /// - Returns: 用户列表响应
     func getBlackList(userId: String, page: Int = 1, limit: Int = 20) async throws -> UserListResponse {
+        // 不使用缓存：与 appGetUserList 一致，保证 dataEnv 切换后列表为当前环境数据
         return try await NetworkService.shared.request(
             operation: "appGetBlackList",
             data: [
-                "openId": userId,
-                "type": "black",
+                "userId": userId,
                 "page": page,
                 "limit": limit
-            ]
+            ],
+            useCache: false
         )
     }
     
@@ -787,8 +807,9 @@ class APIService {
     ///   - limit: 每页数量
     ///   - type: 消息类型（可选）
     ///   - from: 发送者ID（可选）
+    /// - Parameter skipNotReadCount: 为 true 时首屏不拉未读统计，可配合 getUnreadCount 与短时缓存减少首包时间
     /// - Returns: 消息列表响应
-    func getMessages(page: Int = 1, limit: Int = 20, type: Int? = nil, from: String? = nil) async throws -> MessageListResponse {
+    func getMessages(page: Int = 1, limit: Int = 20, type: Int? = nil, from: String? = nil, skipNotReadCount: Bool = false) async throws -> MessageListResponse {
         var data: [String: Any] = [
             "page": page,
             "limit": limit
@@ -802,10 +823,28 @@ class APIService {
             data["from"] = from
         }
         
+        if skipNotReadCount {
+            data["skipNotReadCount"] = true
+        }
+        
         return try await NetworkService.shared.request(
             operation: "getMessagesNew",
-            data: data
+            data: data,
+            useCache: false
         )
+    }
+    
+    /// 获取未读消息数（独立接口，可短时缓存以减少首屏依赖）
+    func getUnreadCount() async throws -> MessageNotReadCount {
+        struct UnreadResponse: Codable {
+            let notReadCount: MessageNotReadCount
+        }
+        let res: UnreadResponse = try await NetworkService.shared.request(
+            operation: "appGetUnreadCount",
+            data: [:],
+            useCache: false
+        )
+        return res.notReadCount
     }
     
     /// 设置消息状态（标记已读/删除）
@@ -843,6 +882,35 @@ class APIService {
             data: data
         )
     }
+
+    /// 批量标记消息已读（用于「全部已读」等场景，一次请求多个 id）
+    /// - Parameters:
+    ///   - messageIds: 消息类型 ID 列表（mesTypeId）
+    ///   - mesType: 消息类型
+    /// - Returns: 成功/失败数量
+    func markMessagesRead(messageIds: [String], mesType: Int) async throws -> MarkMessagesReadResponse {
+        let data: [String: Any] = [
+            "messageIds": messageIds,
+            "mesType": mesType
+        ]
+        return try await NetworkService.shared.request(
+            operation: "appMarkMessagesRead",
+            data: data
+        )
+    }
+}
+
+/// 批量已读响应
+struct MarkMessagesReadResponse: Codable {
+    let results: [MarkMessageReadItem]?
+    let successCount: Int
+    let failCount: Int
+}
+
+struct MarkMessageReadItem: Codable {
+    let mesTypeId: String
+    let success: Bool
+    let error: String?
 }
 
 // MARK: - API响应模型

@@ -11,9 +11,14 @@ const {
 } = require('config');
 const $ = db.command.aggregate
 
+function getDb() {
+  return global.__GETMESSAGESNEW_DB__ || (cloud.init(), cloud.database());
+}
+
 // 获取用户权限
 async function getNotReadCount(openId) {
-
+  const db = getDb();
+  const _ = db.command;
   try {
     let visitorNums, commentNums, chargeNums, aitType1Nums, aitType2Nums;
     // 查询访客数据
@@ -65,6 +70,8 @@ async function getNotReadCount(openId) {
 
 // 查询电量消息
 async function getChargeMessage(data) {
+  const db = getDb();
+  const _ = db.command;
   try {
     let {
       openId,
@@ -126,6 +133,9 @@ async function getChargeMessage(data) {
 
 // 查询评论消息
 async function getCommentMessage(data) {
+  const db = getDb();
+  const _ = db.command;
+  const $ = db.command.aggregate;
   try {
     let {
       openId,
@@ -190,6 +200,9 @@ async function getCommentMessage(data) {
 
 // 查询访客消息
 async function getVisitMessage(data) {
+  const db = getDb();
+  const _ = db.command;
+  const $ = db.command.aggregate;
   try {
     let {
       openId,
@@ -256,6 +269,8 @@ async function getVisitMessage(data) {
 
 // 查询卡片提醒
 async function getCardsMessage(data) {
+  const db = getDb();
+  const _ = db.command;
   try {
     let {
       openId,
@@ -325,8 +340,11 @@ async function getCardsMessage(data) {
   }
 }
 
-// 查询第一屏列表
+// 查询第一屏列表（operate 内版本）
 async function getMessagesUser(data) {
+  const db = getDb();
+  const _ = db.command;
+  const $ = db.command.aggregate;
   try {
     let {
       openId,
@@ -392,6 +410,8 @@ async function getMessagesUser(data) {
 }
 // 查询第一屏列表
 async function getCirclesMessage(data) {
+  const db = getDb();
+  const _ = db.command;
   try {
     let {
       from,
@@ -467,6 +487,7 @@ async function getCirclesMessage(data) {
 
 // 消息置为已读
 async function alreadyRead(dbName, where, update) {
+  const db = getDb();
   await db.collection(dbName).where(
       where
     )

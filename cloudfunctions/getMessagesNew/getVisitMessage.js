@@ -12,9 +12,16 @@ const {
 const $ = db.command.aggregate
 
 
+function getDb() {
+  return global.__GETMESSAGESNEW_DB__ || (cloud.init(), cloud.database());
+}
+
 // 查询访客消息
 // 会员用户只能查看三条
 async function getVisitMessage(data) {
+  const db = getDb();
+  const _ = db.command;
+  const $ = db.command.aggregate;
   try {
     let {
       openId,
@@ -82,6 +89,7 @@ async function getVisitMessage(data) {
 
 // 消息置为已读
 async function alreadyRead(dbName, where, update) {
+  const db = getDb();
   console.log("执行访客消息置为已读");
   console.log(dbName, where, update);
 

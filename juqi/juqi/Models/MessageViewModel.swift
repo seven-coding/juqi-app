@@ -27,84 +27,133 @@ class MessageViewModel: ObservableObject {
     private let limit = 20
     private var messagesWatchIds: [String] = []
     private var showVisit = true // 会员访客提示功能
-    
+    /// 首屏仅首次加载，tab 切回不自动再请求（下拉刷新仍会请求）
+    private var hasLoadedOnce = false
+    /// 加载失败时展示「加载失败 / 重试」
+    @Published var loadFailed = false
+    @Published var loadFailedMessage: String?
+    /// 未读数短时缓存（60s），首屏用 skipNotReadCount 时独立拉未读并缓存
+    private var lastUnreadFetchTime: Date?
+    private var cachedNotReadCount: MessageNotReadCount?
+    private let unreadCacheInterval: TimeInterval = 60
+
     init() {
-        loadMessages()
+        // 不再在 init 里自动加载，由 View onAppear 触发；首次 onAppear 会调 loadMessages()
     }
-    
-    /// 加载消息列表
-    func loadMessages() {
-        guard !isLoading && !allLoaded else { return }
-        
+
+    /// 加载消息列表（首屏使用 skipNotReadCount 减少首包）。仅首次加载或刷新时真正请求，tab 切回不自动再请求。
+    /// - Parameter isRefresh: 为 true 时忽略「仅首次」限制，用于下拉刷新
+    func loadMessages(isRefresh: Bool = false) {
+        if !isRefresh && hasLoadedOnce {
+            print("📤 [Messages] 首屏 loadMessages 跳过：已加载过，仅下拉刷新会再请求")
+            return
+        }
+        guard !isLoading else {
+            print("📤 [Messages] 首屏 loadMessages 跳过 guard: isLoading=true")
+            return
+        }
+
         isLoading = true
-        page = 1
-        allLoaded = false
-        
+        loadFailed = false
+        loadFailedMessage = nil
+        if isRefresh || !hasLoadedOnce {
+            page = 1
+            allLoaded = false
+        }
+        print("📤 [Messages] 首屏 请求 page=1, limit=\(limit), skipNotReadCount=true")
+
         Task {
             do {
-                let response: MessageListResponse = try await APIService.shared.getMessages(page: page, limit: limit)
-                
-                // 处理消息数据
-                var processedMessages = response.messages
-                for i in 0..<processedMessages.count {
-                    processedMessages[i] = processMessage(processedMessages[i])
-                }
-                
-                // 更新未读数量
+                let response: MessageListResponse = try await APIService.shared.getMessages(page: page, limit: limit, skipNotReadCount: true)
+
+                let processedMessages = response.messages.map { Message.formatForDisplay($0) }
+
                 if let notReadCount = response.notReadCount {
                     updateNotReadCount(notReadCount)
+                    cachedNotReadCount = notReadCount
+                    lastUnreadFetchTime = Date()
+                } else {
+                    fetchUnreadCountIfNeeded()
                 }
-                
-                // 保存消息ID用于后续更新
+
                 messagesWatchIds = processedMessages.map { $0.id }
-                
                 messages = processedMessages
                 isEmpty = processedMessages.isEmpty
-                allLoaded = processedMessages.count >= response.count
-                
+                allLoaded = response.count > 0 && processedMessages.count >= response.count
+                hasLoadedOnce = true
+                print("📥 [Messages] 首屏 响应 messages=\(response.messages.count), count=\(response.count), isEmpty=\(isEmpty), allLoaded=\(allLoaded)")
+                isLoading = false
+            } catch let err as APIError {
+                print("❌ [Messages] 首屏 失败 type: \(err.errorType), error: \(err.localizedDescription)")
+                loadFailed = true
+                loadFailedMessage = err.userMessage
                 isLoading = false
             } catch {
-                print("加载消息失败: \(error)")
+                print("❌ [Messages] 首屏 失败: \(error)")
+                loadFailed = true
+                loadFailedMessage = "加载失败，请稍后重试"
                 isLoading = false
+            }
+        }
+    }
+
+    /// 未读数：缓存有效则用缓存，否则请求 appGetUnreadCount 并更新角标与缓存
+    private func fetchUnreadCountIfNeeded() {
+        if let cached = cachedNotReadCount, let last = lastUnreadFetchTime, Date().timeIntervalSince(last) < unreadCacheInterval {
+            updateNotReadCount(cached)
+            return
+        }
+        Task {
+            do {
+                let notReadCount = try await APIService.shared.getUnreadCount()
+                updateNotReadCount(notReadCount)
+                cachedNotReadCount = notReadCount
+                lastUnreadFetchTime = Date()
+            } catch {
+                print("❌ [Messages] getUnreadCount 失败: \(error)")
             }
         }
     }
     
     /// 加载更多消息
     func loadMore() {
-        guard !isLoading && !allLoaded else { return }
+        guard !isLoading && !allLoaded else {
+            print("📤 [Messages] 首屏 loadMore 跳过 guard: isLoading=\(isLoading), allLoaded=\(allLoaded)")
+            return
+        }
         
         isLoading = true
         page += 1
+        print("📤 [Messages] 首屏 loadMore page=\(page), limit=\(limit)")
         
         Task {
             do {
                 let response: MessageListResponse = try await APIService.shared.getMessages(page: page, limit: limit)
                 
                 // 处理消息数据
-                var processedMessages = response.messages
-                for i in 0..<processedMessages.count {
-                    processedMessages[i] = processMessage(processedMessages[i])
-                }
-                
+                let processedMessages = response.messages.map { Message.formatForDisplay($0) }
                 // 追加到现有列表
                 messages.append(contentsOf: processedMessages)
                 messagesWatchIds.append(contentsOf: processedMessages.map { $0.id })
                 
-                allLoaded = messages.count >= response.count
+                allLoaded = response.count > 0 && messages.count >= response.count
+                print("📥 [Messages] 首屏 loadMore 追加=\(processedMessages.count), 当前总数=\(messages.count), count=\(response.count), allLoaded=\(allLoaded)")
                 isLoading = false
             } catch {
-                print("加载更多消息失败: \(error)")
+                print("❌ [Messages] 首屏 loadMore 失败: \(error)")
+                page -= 1
                 isLoading = false
             }
         }
     }
     
-    /// 刷新消息
+    /// 刷新消息（下拉刷新或重试时调用）
     func refresh() {
+        print("📤 [Messages] 首屏 refresh")
         page = 1
         allLoaded = false
-        loadMessages()
+        lastUnreadFetchTime = nil
+        loadMessages(isRefresh: true)
     }
     
     /// 标记消息为已读
@@ -185,89 +234,7 @@ class MessageViewModel: ObservableObject {
     }
     
     // MARK: - 私有方法
-    
-    /// 处理消息数据，格式化消息文本
-    private func processMessage(_ message: Message) -> Message {
-        // 根据消息类型生成msgText
-        var msgText = message.msgText ?? message.message ?? ""
-        
-        switch message.type {
-        case 1:
-            msgText = "设置圈子信息"
-        case 2:
-            msgText = "你成为了管理员"
-        case 3:
-            msgText = "你被取消了管理员资格"
-        case 4:
-            msgText = "你被管理员\(message.fromName)踢出了本电站"
-        case 5:
-            msgText = "你的帖子被加精了"
-        case 6:
-            msgText = "你的帖子被拒绝/取消加精了"
-        case 7:
-            msgText = "你的帖子被电站屏蔽了"
-        case 8:
-            msgText = "你的帖子被电站取消屏蔽了"
-        case 9:
-            msgText = "风控"
-        case 10:
-            msgText = "你的帖子被置顶了"
-        case 11:
-            msgText = "你的帖子被取消置顶了"
-        case 12:
-            msgText = "你的加入申请已被通过了"
-        case 13:
-            msgText = "你的加入申请被拒绝，还请仔细阅读电站说明"
-        case 14:
-            msgText = "你的投稿被通过了"
-        case 15:
-            msgText = "你的投稿被拒绝了"
-        case 16:
-            if let user = message.user?.first {
-                msgText = "\(user.nickName ?? "")关注了你"
-            }
-        case 17:
-            msgText = "有人对你取消关注"
-        case 18:
-            if let messageText = message.message {
-                msgText = messageText
-            } else if let riskControlReason = message.riskControlReason {
-                msgText = riskControlReason
-            } else if let messageInfo = message.messageInfo?.first?.message {
-                msgText = messageInfo
-            }
-        case 19:
-            msgText = "你的评论被点赞了"
-        default:
-            msgText = message.message ?? message.msgText ?? ""
-        }
-        
-        // 创建新的Message对象，更新msgText和formatDate
-        return Message(
-            id: message.id,
-            from: message.from,
-            fromName: message.fromName,
-            fromPhoto: message.fromPhoto,
-            type: message.type,
-            message: message.message,
-            msgText: msgText,
-            createTime: message.createTime,
-            formatDate: message.createTime.formatMessageDate(),
-            status: message.status,
-            noReadCount: message.noReadCount,
-            groupType: message.groupType,
-            groupId: message.groupId,
-            url: message.url,
-            chatId: message.chatId,
-            dynId: message.dynId,
-            user: message.user,
-            circles: message.circles,
-            userInfo: message.userInfo,
-            messageInfo: message.messageInfo,
-            riskControlReason: message.riskControlReason
-        )
-    }
-    
+
     /// 更新未读数量
     private func updateNotReadCount(_ notReadCount: MessageNotReadCount) {
         navItems[0].count = notReadCount.chargeNums.total

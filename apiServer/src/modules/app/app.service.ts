@@ -109,6 +109,13 @@ export class AppService {
     return this.migrationConfig[operation as keyof MigrationConfig] || false;
   }
 
+  /** 脱敏 openId，仅用于日志 */
+  private static maskOpenId(openId: string | null): string {
+    if (openId == null || typeof openId !== 'string') return 'nil';
+    if (openId.length <= 4) return '****';
+    return '****' + openId.slice(-4);
+  }
+
   /**
    * 处理 API 请求（混合路由）
    * 根据迁移配置决定使用直连数据库还是云函数
@@ -121,6 +128,12 @@ export class AppService {
     token?: string,  // 原始 token，用于传递给云函数
   ): Promise<any> {
     const startTime = Date.now();
+
+    // 消息相关接口：打印传参便于排查 ID/环境 问题
+    if (operation === 'getMessagesNew' || operation === 'appGetMessageList') {
+      const d = data || {};
+      console.log(`[AppService] 消息接口传参 operation=${operation}, openId(尾4)=${AppService.maskOpenId(openId)}, openId空=${!openId || openId === ''}, dataEnv=${dataEnv}, page=${d.page ?? 'nil'}, limit=${d.limit ?? 'nil'}, type=${d.type !== undefined ? d.type : 'nil'}, from=${d.from ?? 'nil'}, aitType=${d.aitType !== undefined ? d.aitType : 'nil'}`);
+    }
 
     // 检查是否使用直连
     if (this.shouldUseDirectDB(operation)) {
@@ -317,7 +330,12 @@ export class AppService {
       // dataEnv 仅作为参数传给云函数，由云函数内部切换数据库环境
       const cloudbase = this.cloudbaseService.getCloudbase('test');
 
-      console.log(`[CloudFunction] Calling - name: appApi, operation: ${operation}, source: v2, hasToken: ${!!token}, dataEnv: ${dataEnv || 'test'}`);
+      const dataEnvEffective = dataEnv || 'test';
+      console.log(`[CloudFunction] Calling - name: appApi, operation: ${operation}, source: v2, hasToken: ${!!token}, dataEnv: ${dataEnvEffective}`);
+      if (operation === 'getMessagesNew' || operation === 'appGetMessageList') {
+        const d = data || {};
+        console.log(`[CloudFunction] 消息接口转发 data(传云函数): page=${d.page ?? 'nil'}, limit=${d.limit ?? 'nil'}, type=${d.type !== undefined ? d.type : 'nil'}, from=${d.from ?? 'nil'}, aitType=${d.aitType !== undefined ? d.aitType : 'nil'}`);
+      }
 
       // 调用云函数，自动传递 source='v2' 参数和 dataEnv
       const result = await cloudbase.callFunction({
@@ -333,15 +351,32 @@ export class AppService {
 
       const duration = Date.now() - startTime;
 
-      // 处理云函数返回结果
-      if (result && result.result) {
-        const responseCode = result.result.code || 'unknown';
+      // 归一化云函数返回：客户端只认根级 { code, message, data }，不能带 result 包装
+      let payload: any = result != null && result.result !== undefined ? result.result : result;
+      // result 有时为 JSON 字符串
+      if (typeof payload === 'string') {
+        try {
+          payload = JSON.parse(payload);
+        } catch {
+          payload = null;
+        }
+      }
+      // 兼容双层 result（如 { result: { result: { code, data, message } } }）
+      if (payload && typeof payload === 'object' && payload.result !== undefined && typeof payload.code !== 'number') {
+        payload = payload.result;
+      }
+      if (payload && typeof payload === 'object' && typeof payload.code === 'number') {
+        const responseCode = payload.code;
         console.log(`[CloudFunction] Success - operation: ${operation}, code: ${responseCode}, duration: ${duration}ms`);
-        return result.result;
+        return { code: payload.code, message: payload.message ?? '成功', data: payload.data ?? null };
       }
 
-      console.log(`[CloudFunction] Success - operation: ${operation}, duration: ${duration}ms, result: ${JSON.stringify(result)}`);
-      return result;
+      console.warn(`[CloudFunction] 云函数返回结构异常 - operation: ${operation}, duration: ${duration}ms, result keys: ${result ? Object.keys(result).join(',') : 'null'}`);
+      return {
+        code: 500,
+        message: '云函数未返回有效数据',
+        data: null,
+      };
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error(`[CloudFunction] Error - operation: ${operation}, error: ${error.message || 'Unknown error'}, duration: ${duration}ms`, error);

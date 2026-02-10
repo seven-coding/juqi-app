@@ -15,8 +15,15 @@ const {
 const $ = db.command.aggregate
 
 
+function getDb() {
+  return global.__GETMESSAGESNEW_DB__ || (cloud.init(), cloud.database());
+}
+
 // 查询关注提醒
 async function getFollowMessage(data) {
+  const db = getDb();
+  const _ = db.command;
+  const $ = db.command.aggregate;
   try {
     let {
       openId,
@@ -102,6 +109,7 @@ exports.getFollowMessage = getFollowMessage;
 
 // 消息置为已读
 async function alreadyRead(dbName, where, update) {
+  const db = getDb();
   await db.collection(dbName).where(
       where
     )

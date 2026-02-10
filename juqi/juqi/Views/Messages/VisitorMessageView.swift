@@ -8,14 +8,18 @@
 import SwiftUI
 
 struct VisitorMessageView: View {
-    @StateObject private var viewModel = MessageCategoryViewModel(messageType: 5) // 5=访客消息，6=关注提醒
+    @StateObject private var viewModel = MessageCategoryViewModel(messageType: MessageTypeConstant.visit)
     
     var body: some View {
         ZStack {
             Color(hex: "#000000")
                 .ignoresSafeArea()
             
-            if viewModel.isEmpty && !viewModel.isLoading {
+            if viewModel.loadFailed && !viewModel.isLoading {
+                MessageLoadFailedView(message: viewModel.loadFailedMessage) {
+                    viewModel.refresh()
+                }
+            } else if viewModel.isEmpty && !viewModel.isLoading {
                 EmptyStateView(
                     icon: "person.fill",
                     title: "暂无访客消息",
