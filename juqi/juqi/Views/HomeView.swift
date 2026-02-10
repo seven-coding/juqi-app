@@ -6,12 +6,14 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @State private var scrollProxy: ScrollViewProxy? = nil
     @State private var categoryScrollProxy: ScrollViewProxy? = nil
-    @State private var showRefreshSuccess = false
+    /// 刷新结果 Toast 文案：nil 不显示，"已是最新内容" 等
+    @State private var showRefreshSuccessMessage: String? = nil
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var showScrollToTopButton = false
@@ -19,12 +21,15 @@ struct HomeView: View {
     @State private var isScrollingToTop = false
     @State private var showScrollingIndicator = false
     @State private var showHotListExplanation = false
-    
+    /// 由首页列表外处理导航，避免 navigationDestination 放在 LazyVStack 内的警告
+    @State private var selectedPostForDetail: Post? = nil
+    @State private var selectedUserId: String? = nil
+    @State private var selectedTopicName: String? = nil
+
     var body: some View {
         mainContent
             .background(Color.black)
-            .overlay(scrollingToTopIndicator, alignment: .top)
-            .overlay(refreshSuccessOverlay, alignment: .top)
+            .overlay(refreshResultOverlay, alignment: .top)
             .overlay(errorOverlay, alignment: .top)
             .overlay(scrollToTopButton, alignment: .bottomTrailing)
             .task(loadInitialData)
@@ -63,6 +68,8 @@ struct HomeView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    // 刷新中：留白在列表内容上方，可伸缩头部（业内通用实现）
+                    refreshHeaderInContent
                     // 顶部检测视图 - 用于检测滚动位置
                     Color.clear
                         .frame(height: 1)
@@ -85,13 +92,22 @@ struct HomeView: View {
                 }
             }
             .coordinateSpace(name: "scrollView")
+            .navigationDestination(item: $selectedPostForDetail) { post in
+                PostDetailView(post: post)
+            }
+            .navigationDestination(item: $selectedUserId) { userId in
+                UserProfileView(userId: userId, userName: "")
+            }
+            .navigationDestination(item: $selectedTopicName) { topicName in
+                TopicDetailView(topicName: topicName)
+            }
             .onPreferenceChange(FirstPostVisibilityPreferenceKey.self) { value in
                 updateScrollToTopButtonVisibility(offset: value)
             }
             .refreshable {
-                // 下拉刷新：重新请求列表接口（首屏，publicTime: nil）
                 await handleRefresh()
             }
+            .background(HideSystemRefreshControlView(showCustomRefresh: showScrollingIndicator))
             .onAppear {
                 scrollProxy = proxy
             }
@@ -125,14 +141,19 @@ struct HomeView: View {
                 }
                 
                 ForEach(viewModel.currentPosts) { post in
-                    PostCardView(post: post)
-                        .overlay(divider, alignment: .bottom)
-                        .id(post.id)
-                        .onAppear {
-                            if post.id == viewModel.currentPosts.last?.id {
-                                viewModel.saveScrollPosition(category: viewModel.selectedCategory, postId: post.id)
-                            }
+                    PostCardView(
+                        post: post,
+                        onNavigateToDetail: { selectedPostForDetail = $0 },
+                        onNavigateToUser: { selectedUserId = $0 },
+                        onNavigateToTopic: { selectedTopicName = $0 }
+                    )
+                    .overlay(divider, alignment: .bottom)
+                    .id(post.id)
+                    .onAppear {
+                        if post.id == viewModel.currentPosts.last?.id {
+                            viewModel.saveScrollPosition(category: viewModel.selectedCategory, postId: post.id)
                         }
+                    }
                 }
                 .transition(.opacity)
                 
@@ -174,15 +195,15 @@ struct HomeView: View {
         .transition(.opacity.combined(with: .scale))
     }
     
-    // MARK: - Refresh Success Overlay
-    private var refreshSuccessOverlay: some View {
+    // MARK: - Refresh Result Overlay（成功无新内容时显示「已是最新内容」等）
+    private var refreshResultOverlay: some View {
         Group {
-            if showRefreshSuccess {
-                RefreshSuccessToast()
+            if let message = showRefreshSuccessMessage {
+                RefreshSuccessToast(message: message)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showRefreshSuccess)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showRefreshSuccessMessage)
     }
     
     // MARK: - Error Overlay
@@ -201,38 +222,25 @@ struct HomeView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showError)
     }
     
-    // MARK: - Scrolling To Top Indicator
-    private var scrollingToTopIndicator: some View {
-        Group {
-            if showScrollingIndicator {
-                VStack(spacing: 8) {
-                    HStack(spacing: 10) {
-                        // 自定义加载动画
-                        LoadingDotsView()
-                        Text("正在刷新...")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(
-                        Capsule()
-                            .fill(Color(hex: "#1C1C1E"))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color(hex: "#FF6B35").opacity(0.3), lineWidth: 1)
-                            )
-                    )
-                    .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
-                }
-                .padding(.top, 70)
-                .transition(.asymmetric(
-                    insertion: .scale(scale: 0.9).combined(with: .opacity).combined(with: .offset(y: -10)),
-                    removal: .scale(scale: 0.95).combined(with: .opacity)
-                ))
+    /// 刷新时顶部留白高度（业内通用：留白在列表内容上方，可伸缩）
+    private let refreshHeaderHeight: CGFloat = 88
+
+    // MARK: - 刷新头部（列表内第一块，留白在内容上方，丝滑伸缩）
+    private var refreshHeaderInContent: some View {
+        ZStack(alignment: .center) {
+            Color.black
+            HStack(spacing: 10) {
+                ProgressView()
+                    .tint(.white)
+                Text("正在为你收集新的橘气")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
             }
+            .padding(.vertical, 20)
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showScrollingIndicator)
+        .frame(height: showScrollingIndicator ? refreshHeaderHeight : 0)
+        .clipped()
+        .animation(.easeInOut(duration: 0.28), value: showScrollingIndicator)
     }
     
     // MARK: - Scroll To Top Button
@@ -286,18 +294,57 @@ struct HomeView: View {
         }
     }
     
-    private func handleRefresh() async {
-        viewModel.triggerHaptic(.soft)
-        let success = await viewModel.refreshPosts()
-        if success {
-            showRefreshSuccess = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                showRefreshSuccess = false
+    /// 统一刷新流程：下拉或双击首页底 Tab 均走此流程
+    /// - Parameter fromPull: true 为下拉触发，不滚动；false 为双击触发，未在顶部时先滚动到顶
+    private func performRefresh(fromPull: Bool) async {
+        // 阶段1：触觉 + 防重复
+        viewModel.triggerHaptic(.light)
+        isScrollingToTop = true
+        defer { isScrollingToTop = false }
+
+        // 阶段2：双击时先滚动到顶再刷新；下拉则直接刷新
+        if !fromPull {
+            withAnimation(.easeOut(duration: 0.2)) {
+                showScrollToTopButton = false
             }
-            viewModel.triggerHaptic(.light)
+            // 稍等一帧确保 ScrollView 已布局，再执行滚动
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            let distance = abs(scrollOffset)
+            let baseDuration: Double = 0.35
+            let maxDuration: Double = 0.6
+            let scrollDuration = min(baseDuration + (distance / 3000), maxDuration)
+            withAnimation(.spring(response: scrollDuration, dampingFraction: 0.85, blendDuration: 0.1)) {
+                scrollProxy?.scrollTo("top", anchor: .top)
+            }
+            try? await Task.sleep(nanoseconds: UInt64(scrollDuration * 1_000_000_000))
         }
+
+        // 阶段3：请求中，显示「正在为你收集新的橘气」
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showScrollingIndicator = true
+        }
+        let (success, hasNewContent) = await viewModel.refreshPosts()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showScrollingIndicator = false
+        }
+
+        if success && hasNewContent == false {
+            viewModel.triggerHaptic(.success)
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                showRefreshSuccessMessage = "已是最新内容"
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                showRefreshSuccessMessage = nil
+            }
+        }
+        // 成功且有新内容：仅更新列表，不弹 Toast
     }
-    
+
+    /// 下拉刷新入口
+    private func handleRefresh() async {
+        await performRefresh(fromPull: true)
+    }
+
     private func handleCategoryChange(proxy: ScrollViewProxy, newValue: HomeCategory) {
         if let lastPostId = viewModel.getLastVisiblePostId(for: newValue),
            !lastPostId.isEmpty {
@@ -329,73 +376,9 @@ struct HomeView: View {
     }
     
     private func handleHomeTabDoubleTap() {
-        // 防止重复触发
         guard !isScrollingToTop else { return }
-        
         Task {
-            // 阶段1: 点击确认 - 轻触觉反馈
-            viewModel.triggerHaptic(.light)
-            isScrollingToTop = true
-            
-            // 根据滚动距离计算动画时长（距离越远，时间越长，但有上限）
-            let distance = abs(scrollOffset)
-            let baseDuration: Double = 0.35
-            let maxDuration: Double = 0.6
-            let scrollDuration = min(baseDuration + (distance / 3000), maxDuration)
-            
-            // 隐藏返回顶部按钮（带动画）
-            withAnimation(.easeOut(duration: 0.2)) {
-                showScrollToTopButton = false
-            }
-            
-            // 阶段2: 开始滚动 - 使用更平滑的动画曲线
-            withAnimation(.spring(response: scrollDuration, dampingFraction: 0.85, blendDuration: 0.1)) {
-                scrollProxy?.scrollTo("top", anchor: .top)
-            }
-            
-            // 等待滚动动画完成
-            let scrollWaitTime = UInt64(scrollDuration * 1_000_000_000)
-            try? await Task.sleep(nanoseconds: scrollWaitTime)
-            
-            // 阶段3: 到达顶部 - 中等触觉反馈，表示"到达"
-            viewModel.triggerHaptic(.medium)
-            
-            // 显示刷新指示器
-            withAnimation(.easeInOut(duration: 0.25)) {
-                showScrollingIndicator = true
-            }
-            
-            // 短暂停顿，让用户感知"已到达顶部"
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            
-            // 阶段4: 开始刷新
-            let success = await viewModel.refreshPosts()
-            
-            // 隐藏刷新指示器
-            withAnimation(.easeInOut(duration: 0.2)) {
-                showScrollingIndicator = false
-            }
-            
-            if success {
-                // 阶段5: 刷新成功 - 成功触觉反馈
-                viewModel.triggerHaptic(.success)
-                
-                // 显示成功提示（延迟一点，让过渡更自然）
-                try? await Task.sleep(nanoseconds: 150_000_000)
-                
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                    showRefreshSuccess = true
-                }
-                
-                // 自动隐藏成功提示
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        showRefreshSuccess = false
-                    }
-                }
-            }
-            
-            isScrollingToTop = false
+            await performRefresh(fromPull: false)
         }
     }
     
@@ -674,11 +657,12 @@ struct CategoryButtonStyle: ButtonStyle {
 
 // MARK: - Toast Views
 struct RefreshSuccessToast: View {
+    var message: String = "刷新成功"
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundColor(Color(hex: "#FF6B35"))
-            Text("刷新成功")
+            Text(message)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white)
         }
@@ -935,6 +919,46 @@ struct ScrollToTopButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
             .opacity(configuration.isPressed ? 0.8 : 1.0)
             .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+// MARK: - 隐藏系统下拉刷新转圈（仅显示自定义「正在为你收集新的橘气」）
+struct HideSystemRefreshControlView: UIViewRepresentable {
+    var showCustomRefresh: Bool
+    func makeUIView(context: Context) -> UIView {
+        let v = RefreshControlHiderView()
+        v.backgroundColor = .clear
+        return v
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {
+        (uiView as? RefreshControlHiderView)?.hideRefreshControlNow()
+    }
+}
+
+private final class RefreshControlHiderView: UIView {
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil else { return }
+        hideRefreshControlNow()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.hideRefreshControlNow()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.hideRefreshControlNow()
+        }
+    }
+    func hideRefreshControlNow() {
+        guard let w = window else { return }
+        findAndHideRefreshControl(in: w)
+    }
+    private func findAndHideRefreshControl(in view: UIView) {
+        if let scroll = view as? UIScrollView, let rc = scroll.refreshControl {
+            rc.isHidden = true
+            rc.alpha = 0
+        }
+        for sub in view.subviews {
+            findAndHideRefreshControl(in: sub)
+        }
     }
 }
 

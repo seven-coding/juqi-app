@@ -29,7 +29,8 @@ let userLimit = {
     volunteerInfo: 1,
     partnerInfo: 1,
     adminInfo: 1,
-    tagOnShow: 1
+    tagOnShow: 1,
+    vipStatus: 1
 }
 
 // 处理数据

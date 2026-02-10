@@ -13,7 +13,9 @@ const { convertDynListUrls, convertDynUrls, convertCommentUrls } = require('../u
  * @returns {Object} App格式的动态数据
  */
 function convertDynToAppFormat(dyn, currentOpenId) {
-  const userInfo = dyn.userInfo && Array.isArray(dyn.userInfo) ? dyn.userInfo[0] : (dyn.userInfo || {});
+  const rawUserInfo = dyn.userInfo && Array.isArray(dyn.userInfo) ? dyn.userInfo[0] : dyn.userInfo;
+  const userInfo = rawUserInfo && typeof rawUserInfo === 'object' ? rawUserInfo : {};
+  const userSecret = (dyn.userSecret && Array.isArray(dyn.userSecret) ? dyn.userSecret[0] : null) || (userInfo.usersSecret && userInfo.usersSecret[0]);
   
   // 处理图片列表
   let images = null;
@@ -132,7 +134,7 @@ function convertDynToAppFormat(dyn, currentOpenId) {
   const rawDynContent = dyn.dynContent || '';
   let content = rawDynContent;
   const isAppSource = dyn.source === 'newApp';
-  if (!isAppSource) {
+    if (!isAppSource) {
     // 小程序或历史数据：若正文已含 #/@ 则直接用，否则用 topic/ait 拼接
     const hasRichInContent = /#|@/.test(rawDynContent);
     if (!hasRichInContent) {
@@ -149,15 +151,28 @@ function convertDynToAppFormat(dyn, currentOpenId) {
       if (parts.length) content = (content ? content + ' ' : '') + parts.join(' ');
     }
   }
+
+  // 正文 @ 列表：id 与发帖时选择的用户 ID 一致（来自 dyn.ait），仅用 id 跳转，不兼容昵称
+  const mentionedUsers = (dyn.ait && Array.isArray(dyn.ait))
+    ? dyn.ait.map(a => {
+        const id = typeof a === 'object' && a && (a.openId || a._id) ? (a.openId || a._id) : (typeof a === 'string' ? a : null);
+        const userName = typeof a === 'object' && a && a.nickName ? a.nickName : (typeof a === 'string' ? a : '');
+        return id ? { id, userName: userName || '' } : null;
+      }).filter(Boolean)
+    : [];
   
+  // 个性签名：与小程序一致，小程序用 labels，数据库可能为 signature 或 labels
+  const userSignature = (userInfo.signature && String(userInfo.signature).trim()) || (userInfo.labels && String(userInfo.labels).trim()) || null;
+
   return {
     id: dynId,
     userId: dyn.openId || userInfo.openId || '',
     userName: userInfo.nickName || '未知用户',
     userAvatar: userInfo.avatarVisitUrl || userInfo.avatarUrl || null,
-    userSignature: userInfo.signature || null,
-    isVip: Boolean(userInfo.usersSecret && userInfo.usersSecret[0] && userInfo.usersSecret[0].vipStatus),
+    userSignature,
+    isVip: Boolean((userSecret && userSecret.vipStatus) || (userInfo.usersSecret && userInfo.usersSecret[0] && userInfo.usersSecret[0].vipStatus)),
     content,
+    mentionedUsers: mentionedUsers.length ? mentionedUsers : undefined,
     images: images,
     tag: null, // 标签需要从其他字段推导，暂时为null
     publishTime: publishTimestamp, // 秒级时间戳（Unix epoch），客户端用 .secondsSince1970 解码
@@ -166,18 +181,25 @@ function convertDynToAppFormat(dyn, currentOpenId) {
     shareCount: dyn.forwardNums || 0,
     chargeCount: dyn.chargeNums || dyn.likeNums || 0, // dyn 文档无独立 chargeNums，每次点赞=1电量，等于 likeNums
     isLiked: Boolean(isLiked),
-    isCollected: false, // 需要额外查询收藏状态
+    isCollected: dyn.favoriteFlag === '0',   // 0=已收藏，1=未收藏
     isCharged: false,   // 需要额外查询充电状态
     repostPost: repostPost,
-    likeUsers: null,    // 需要额外查询互动用户列表
+    likeUsers: (dyn.like && Array.isArray(dyn.like) && dyn.like.length > 0)
+      ? dyn.like.map(u => ({
+          id: u.openId || u._id || u.id || '',
+          userName: u.nickName || u.userName || '',
+          avatar: u.avatarVisitUrl || u.avatarUrl || u.avatar || null
+        })).filter(u => u.id)
+      : null,
     joinCount: null,    // 需要额外查询参与记录数
     circleId: dyn.circleId || null,
-    circleTitle: dyn.circleTitle || null,
-    circleJoinCount: null, // 需要额外查询圈子参与人数
+    circleTitle: (dyn.circleInfo && dyn.circleInfo[0]) ? dyn.circleInfo[0].title : (dyn.circleTitle || null),
+    circleJoinCount: (dyn.circleInfo && dyn.circleInfo[0] && dyn.circleInfo[0].followCircleNums != null) ? dyn.circleInfo[0].followCircleNums : null,
     voiceUrl: dyn.dynVoice || null,
     voiceDuration: dyn.dynVoiceLen || null,
     videoUrl: videoUrl,
-    musicInfo: musicInfo
+    musicInfo: musicInfo,
+    isPinned: !!(dyn.userTopTime > 0)
   };
 }
 
@@ -1176,6 +1198,93 @@ async function RepostDyn(event) {
   }
 }
 
+/**
+ * 收藏动态
+ * 写入 dynFavorite：openId=当前用户，dynId，upOpenId=帖子作者，favoriteFlag='0'
+ */
+async function FavoriteDyn(event) {
+  try {
+    const { openId, data, db } = event;
+    const { id: dynId } = data || {};
+    if (!dynId || !db) return error(400, "缺少动态ID或数据库未初始化");
+    const dynDoc = await db.collection('dyn').doc(dynId).get();
+    if (!dynDoc.data) return error(404, "动态不存在");
+    const upOpenId = dynDoc.data.openId || '';
+    const existing = await db.collection('dynFavorite').where({ openId, dynId }).get();
+    if (existing.data && existing.data.length > 0) {
+      await db.collection('dynFavorite').where({ openId, dynId }).update({
+        data: { favoriteFlag: '0', updateDate: Date.now() }
+      });
+    } else {
+      await db.collection('dynFavorite').add({
+        data: {
+          openId,
+          upOpenId,
+          dynId,
+          favoriteFlag: '0',
+          createDate: Date.now(),
+          updateDate: Date.now()
+        }
+      });
+    }
+    return success({});
+  } catch (err) {
+    console.error('[appFavoriteDyn] error:', err);
+    return error(500, err.message || "收藏失败");
+  }
+}
+
+/**
+ * 取消收藏动态
+ */
+async function UnfavoriteDyn(event) {
+  try {
+    const { openId, data, db } = event;
+    const { id: dynId } = data || {};
+    if (!dynId || !db) return error(400, "缺少动态ID或数据库未初始化");
+    const existing = await db.collection('dynFavorite').where({ openId, dynId }).get();
+    if (existing.data && existing.data.length > 0) {
+      await db.collection('dynFavorite').where({ openId, dynId }).update({
+        data: { favoriteFlag: '1', updateDate: Date.now() }
+      });
+    }
+    return success({});
+  } catch (err) {
+    console.error('[appUnfavoriteDyn] error:', err);
+    return error(500, err.message || "取消收藏失败");
+  }
+}
+
+/**
+ * 个人主页置顶/取消置顶
+ * 核心层: setDynAction, type=16 置顶, type=15 取消置顶
+ */
+async function SetUserProfilePin(event) {
+  try {
+    const { openId, data } = event;
+    const { postId, pin } = (data || {});
+    if (!postId) return error(400, "缺少动态ID");
+    const type = pin ? 16 : 15; // 16=个人主页置顶, 15=取消个人主页置顶
+    const result = await cloud.callFunction({
+      name: 'setDynAction',
+      data: {
+        type,
+        dynId: postId,
+        source: 'newApp',
+        openId
+      }
+    });
+    const res = result.result;
+    if (res && res.code !== 200) {
+      return error(res.code || 500, res.message || (pin ? "置顶失败" : "取消置顶失败"));
+    }
+    return success({});
+  } catch (err) {
+    console.error('[appSetUserProfilePin] error:', err);
+    return error(500, err.message || "操作失败");
+  }
+}
+
 module.exports = {
   GetDynList,
   GetDynDetail,
@@ -1187,5 +1296,11 @@ module.exports = {
   CommentDyn,
   LikeComment,
   DeleteComment,
-  RepostDyn
+  RepostDyn,
+  FavoriteDyn,
+  UnfavoriteDyn,
+  SetUserProfilePin,
+  // 供 circle 等模块复用：先转 App 格式 + URL 转换 + 统一 publicTime
+  convertDynToAppFormat,
+  toMillisTimestamp
 };

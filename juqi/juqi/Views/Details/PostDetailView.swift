@@ -36,6 +36,8 @@ struct PostDetailView: View {
     @State private var isReposting = false
     @State private var navigationTopic: String? = nil
     @State private var navigationUser: String? = nil
+    @State private var showCopyToast = false
+    @State private var isPinned = false
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -141,6 +143,7 @@ struct PostDetailView: View {
         .task {
             // 先展示列表带来的 post，避免白屏长时间转圈；再后台拉详情与用户信息
             detailPost = post
+            isPinned = post.isPinned ?? false
             isLoading = false
             await loadDetail()
         }
@@ -184,6 +187,17 @@ struct PostDetailView: View {
                 TopicDetailView(topicName: topicName)
             }
         }
+        .overlay {
+            if showCopyToast {
+                Text("已复制")
+                    .font(.system(size: 14))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "#2F3336"))
+                    .cornerRadius(8)
+            }
+        }
     }
     
     // MARK: - 圈子信息区
@@ -195,7 +209,7 @@ struct PostDetailView: View {
                 .frame(width: 6, height: 6)
             
             // 圈子名称（可点击跳转）
-            NavigationLink(destination: CircleDetailView(circleId: circleId)) {
+            NavigationLink(destination: CircleDetailView(circleId: circleId, circleTitle: circleTitle)) {
                 Text(circleTitle)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(Color(hex: "#FF6B35"))
@@ -304,25 +318,35 @@ struct PostDetailView: View {
     // MARK: - 帖子内容区
     private func postContentSection(post: Post) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            // 帖子文字（支持话题和@用户跳转）
-            RichTextView(text: post.content)
+            // 帖子文字（支持话题和@用户跳转，长按复制）
+            RichTextView(text: post.content, mentionedUsers: post.mentionedUsers)
+                .onLongPressGesture {
+                    if !post.content.isEmpty {
+                        UIPasteboard.general.string = post.content
+                        showCopyToast = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopyToast = false
+                        }
+                    }
+                }
             
             // 转发内容
             if let repost = post.repostPost {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 4) {
-                        NavigationLink(destination: UserProfileView(userId: repost.userId ?? "", userName: repost.userName)) {
-                            Text("@\(repost.userName)")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(Color(hex: "#FF6B35"))
-                        }
-                        .buttonStyle(PlainButtonStyle())
+                VStack(alignment: .leading, spacing: 10) {
+                    NavigationLink(destination: UserProfileView(userId: repost.userId ?? "", userName: repost.userName)) {
+                        Text("@\(repost.userName)")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Color(hex: "#FF6B35"))
                     }
+                    .buttonStyle(PlainButtonStyle())
                     
-                    Text(repost.content)
-                        .font(.system(size: 14))
-                        .foregroundColor(.white)
-                        .lineLimit(3)
+                    if !repost.content.isEmpty {
+                        Text(repost.content)
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "#E7E9EA"))
+                            .lineLimit(4)
+                            .multilineTextAlignment(.leading)
+                    }
                     
                     if let repostImages = repost.images, !repostImages.isEmpty {
                         if repostImages.count == 1 {
@@ -335,21 +359,23 @@ struct PostDetailView: View {
                                     .fill(Color(hex: "#2F3336"))
                                     .aspectRatio(1, contentMode: .fit)
                             }
-                            .frame(width: 200, height: 200)
-                            .cornerRadius(8)
+                            .frame(maxWidth: 200, maxHeight: 200)
+                            .aspectRatio(1, contentMode: .fit)
                             .clipped()
+                            .cornerRadius(8)
                         } else {
                             ImageGridView(images: repostImages)
-                                .scaleEffect(0.8, anchor: .topLeading)
+                                .scaleEffect(0.75, anchor: .topLeading)
                         }
                     }
                 }
-                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
                 .background(Color(hex: "#16181C"))
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: "#2F3336"), lineWidth: 0.5)
+                        .stroke(Color(hex: "#2F3336"), lineWidth: 1)
                 )
             }
             
@@ -888,21 +914,34 @@ struct PostDetailView: View {
         
         do {
             let (detail, userProfile) = try await (detailTask, userTask)
-            // 调试：确认详情接口返回的 content 是否包含 # 和 @
-            let hasTopic = detail.content.contains("#")
-            let hasMention = detail.content.contains("@")
-            print("📋 [Detail Content] id=\(detail.id.prefix(8))… 含#=\(hasTopic) 含@=\(hasMention) | content=\(detail.content.prefix(80))\(detail.content.count > 80 ? "…" : "")")
             await MainActor.run {
                 detailPost = detail
                 isCharged = detail.isCharged
                 currentUserId = userProfile.id
-                followStatus = 2
-                isFollowing = followStatus == 2 || followStatus == 4
+                isCollected = detail.isCollected
+                isPinned = detail.isPinned ?? false
+            }
+            // 本人帖子：followStatus = 0；非本人：从接口拉取关注状态
+            if userProfile.id == detail.userId {
+                await MainActor.run {
+                    followStatus = 0
+                    isFollowing = false
+                }
+            } else {
+                let status = try await APIService.shared.getUserFollowStatus(userId: detail.userId)
+                await MainActor.run {
+                    switch status {
+                    case .notFollowing: followStatus = 1
+                    case .following: followStatus = 2
+                    case .followBack: followStatus = 3
+                    case .mutual: followStatus = 4
+                    }
+                    isFollowing = status == .following || status == .followBack || status == .mutual
+                }
             }
         } catch {
             if error is CancellationError { return }
             print("Failed to load detail: \(error)")
-            // 详情失败时保留首屏的 post；若用户信息成功则仍更新 currentUserId
             if let userProfile = try? await userTask {
                 await MainActor.run { currentUserId = userProfile.id }
             }
@@ -974,8 +1013,13 @@ struct PostDetailView: View {
             ))
         }
         
-        // 如果是本人帖子，显示删除和管理
+        // 如果是本人帖子，显示个人主页置顶/取消置顶、删除
         if followStatus == 0 {
+            items.append(ActionSheetView.ActionItem(
+                title: isPinned ? "取消个人主页置顶" : "个人主页置顶",
+                icon: "pin",
+                isDestructive: false
+            ))
             items.append(ActionSheetView.ActionItem(
                 title: "删除",
                 icon: "trash",
@@ -1024,15 +1068,43 @@ struct PostDetailView: View {
             Task {
                 await blackUser(detailPost.userId)
             }
+        case "个人主页置顶":
+            Task {
+                await setUserProfilePin(detailPost, pin: true)
+            }
+        case "取消个人主页置顶":
+            Task {
+                await setUserProfilePin(detailPost, pin: false)
+            }
         default:
             break
         }
     }
     
+    private func setUserProfilePin(_ post: Post, pin: Bool) async {
+        do {
+            try await APIService.shared.setUserProfilePin(postId: post.id, pin: pin)
+            await MainActor.run {
+                isPinned = pin
+                NotificationCenter.default.post(name: Notification.Name("PostDetailDidPinChange"), object: nil)
+            }
+        } catch {
+            print("个人主页置顶失败: \(error)")
+        }
+    }
+    
     private func toggleCollect(_ post: Post) async {
-        // TODO: 实现收藏/取消收藏API
-        await MainActor.run {
-            isCollected.toggle()
+        do {
+            if isCollected {
+                _ = try await APIService.shared.unfavoriteDyn(id: post.id)
+            } else {
+                _ = try await APIService.shared.favoriteDyn(id: post.id)
+            }
+            await MainActor.run {
+                isCollected.toggle()
+            }
+        } catch {
+            print("Failed to toggle collect: \(error)")
         }
     }
     
@@ -1062,22 +1134,21 @@ struct PostDetailView: View {
     }
     
     private func deletePost(_ post: Post) {
-        // 删除帖子逻辑
         Task {
-            // 这里需要添加删除API
-            // do {
-            //     _ = try await APIService.shared.deleteDyn(id: post.id)
-            //     print("Delete post: \(post.id)")
-            // } catch {
-            //     print("Failed to delete post: \(error)")
-            // }
-            print("Delete post: \(post.id)")
+            do {
+                _ = try await APIService.shared.deleteDyn(id: post.id)
+                await MainActor.run {
+                    dismiss()
+                }
+            } catch {
+                print("Failed to delete post: \(error)")
+            }
         }
     }
     
     private func reportPost(_ post: Post) {
-        // 举报帖子逻辑
-        print("Report post: \(post.id)")
+        // 举报接口待后端提供后对接
+        // 暂时仅做占位，可后续接入 appReportDyn 或 setMessage type=10
     }
     
     private func performRepost() async {

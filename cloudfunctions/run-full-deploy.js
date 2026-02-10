@@ -40,20 +40,27 @@ async function run() {
     process.env.TENCENT_SECRET_KEY = process.env.CLOUD_BASE_KEY;
   }
 
-  // 步骤 1：补建缺失云函数（必须，否则测试环境中不存在的函数无法用 SCF 更新代码）
-  console.log('\n========== 步骤 1/2：补建缺失云函数（微信 Open API） ==========\n');
-  const { main: createMain } = require('./wx-create-functions.js');
-  const createResult = await createMain();
-  if (createResult.failed > 0) {
-    console.warn('部分函数补建失败，继续执行部署步骤。');
+  const deployOnly = process.env.DEPLOY_ONLY ? process.env.DEPLOY_ONLY.split(',').map(s => s.trim()).filter(Boolean) : null;
+
+  if (!deployOnly || deployOnly.length === 0) {
+    // 步骤 1：全量部署时才补建缺失云函数
+    console.log('\n========== 步骤 1/2：补建缺失云函数（微信 Open API） ==========\n');
+    const { main: createMain } = require('./wx-create-functions.js');
+    const createResult = await createMain();
+    if (createResult.failed > 0) {
+      console.warn('部分函数补建失败，继续执行部署步骤。');
+    }
+  } else {
+    console.log('\n========== 按需部署（仅更新指定函数，跳过补建） ==========\n');
+    console.log('目标函数:', deployOnly.join(', '));
   }
 
-  // 步骤 2：批量上传代码到测试环境
-  console.log('\n========== 步骤 2/2：批量上传代码到测试环境（腾讯云 SCF） ==========\n');
+  // 步骤 2：上传代码（全量或按 DEPLOY_ONLY 列表）
+  console.log('\n========== 步骤 2/2：上传代码到测试环境（腾讯云 SCF） ==========\n');
   const { main: deployMain } = require('./deploy-all.js');
   await deployMain();
 
-  console.log('\n========== 一键部署完成 ==========\n');
+  console.log('\n========== 部署完成 ==========\n');
 }
 
 run().catch((err) => {

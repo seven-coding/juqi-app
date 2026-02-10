@@ -27,7 +27,7 @@ struct RepostSheetView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                         } placeholder: {
-                            Circle()
+                            SwiftUI.Circle()
                                 .fill(Color(hex: "#2F3336"))
                                 .overlay(
                                     Text(post.userName.isEmpty ? "匿" : String(post.userName.prefix(1)))
@@ -36,7 +36,7 @@ struct RepostSheetView: View {
                                 )
                         }
                         .frame(width: 40, height: 40)
-                        .clipShape(Circle())
+                        .clipShape(SwiftUI.Circle())
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text(post.userName)

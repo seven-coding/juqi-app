@@ -100,7 +100,9 @@ struct TabBarView: View {
                     // 初始化时计算未读消息数
                     unreadCount = calculateUnreadCount()
                 }
-                
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SwitchToMessageTab"))) { _ in
+                    selectedTab = .message
+                }
                 
             }
             .frame(width: geo.size.width, height: geo.size.height)

@@ -470,6 +470,14 @@ const result = await cloud.callFunction({
 - **参数**: （开发时补充）
 - **返回**: （开发时补充）
 
+#### appSearchAll - 聚合搜索（推荐）
+- **说明**: 一次请求返回用户、动态、话题三类搜索结果；在 appApi 内部直连 db，不依赖 getRearch，无内容安全阻断、与 dataEnv 一致
+- **是否需要Token**: 是
+- **返回会员状态**: 否
+- **实现方式**: appApi 内部实现（event.db 直连）
+- **参数**: `data: { keyword, page?: 1, limitPerType?: 10 }`，keyword 必填，limitPerType 每类条数默认 10、最大 20
+- **返回**: `{ code: 200, data: { users: { list, total, hasMore }, dyns: { list, total, hasMore }, topics: { list, total, hasMore } } }`
+
 ---
 
 ### 2.7 文件上传类

@@ -128,12 +128,14 @@ async function getSquareList(event, ownOpenId) {
               .field({
                 openId: true,
                 avatarUrl: true,
+                avatarVisitUrl: true,
                 nickName: true,
                 avatarHat: true,
                 dressPlace: true,
                 labels: true,
                 joinStatus: true,
-                auth: true
+                auth: true,
+                vipStatus: true
               })
               .get();
             
@@ -149,10 +151,15 @@ async function getSquareList(event, ownOpenId) {
       
       // 格式化结果
       const formattedList = dynList.data.map(item => {
-        const userInfo = userMap[item.openId] || {
+        const rawUser = userMap[item.openId];
+        const userInfo = rawUser ? {
+          ...rawUser,
+          avatarUrl: rawUser.avatarVisitUrl || rawUser.avatarUrl || ''
+        } : {
           openId: item.openId,
           nickName: '用户',
-          avatarUrl: ''
+          avatarUrl: '',
+          avatarVisitUrl: ''
         };
         
         return {
@@ -161,7 +168,7 @@ async function getSquareList(event, ownOpenId) {
           userSecret: [{
             avatarHat: userInfo.avatarHat || '',
             dressPlace: userInfo.dressPlace || '',
-            vipStatus: '',
+            vipStatus: rawUser ? (rawUser.vipStatus || '') : '',
             avatarStatus: '',
             avatarHatId: '',
             avatarHatTime: ''

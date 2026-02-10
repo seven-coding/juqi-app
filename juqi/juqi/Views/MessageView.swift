@@ -20,14 +20,26 @@ struct MessageView: View {
                     .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // 顶部导航栏（4个分类入口）
+                    // 顶部导航栏（4个分类入口）- 紧贴最顶部
                     messageNavBar
-                        .padding(.top, 40)
+                        .padding(.top, 0)
                         .padding(.bottom, 20)
                         .background(Color(hex: "#000000"))
                     
-                    // 消息列表
-                    if viewModel.isEmpty && !viewModel.isLoading {
+                    // 消息列表（首屏加载时显示 loading）
+                    if viewModel.isLoading && viewModel.messages.isEmpty {
+                        VStack {
+                            Spacer()
+                            ProgressView()
+                                .tint(Color(hex: "#FF6B35"))
+                                .scaleEffect(1.2)
+                            Text("加载中...")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color(hex: "#605D5D"))
+                                .padding(.top, 8)
+                            Spacer()
+                        }
+                    } else if viewModel.isEmpty && !viewModel.isLoading {
                         EmptyStateView(
                             icon: "tray",
                             title: "暂无消息",

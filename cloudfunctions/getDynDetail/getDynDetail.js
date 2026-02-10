@@ -36,7 +36,8 @@ async function getDynDetail(dynId) {
                     country: 1,
                     openId: 1,
                     joinStatus: 1,
-                    avatarVisitUrl: 1
+                    avatarVisitUrl: 1,
+                    signature: 1
                 })
                 .done(),
             as: 'userInfo',

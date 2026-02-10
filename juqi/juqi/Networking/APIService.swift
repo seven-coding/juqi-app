@@ -18,14 +18,18 @@ class APIService {
     ///   - type: 类型 (all, follow, circle, topic等)
     ///   - limit: 每页数量
     ///   - publicTime: 游标，仅加载更多时传（上一页返回的 publicTime）
+    ///   - circleId: 圈子ID（type == "circle" 时必传）
     /// - Note: 不使用缓存，确保 content（含 #话题#、@用户）与服务器一致
-    func getDynList(type: String, limit: Int = 20, publicTime: Double? = nil) async throws -> DynListResponse {
+    func getDynList(type: String, limit: Int = 20, publicTime: Double? = nil, circleId: String? = nil) async throws -> DynListResponse {
         var data: [String: Any] = [
             "type": type,
             "limit": limit
         ]
         if let cursor = publicTime {
             data["publicTime"] = cursor
+        }
+        if let circleId = circleId {
+            data["circleId"] = circleId
         }
         return try await NetworkService.shared.request(
             operation: "appGetDynList",
@@ -92,6 +96,41 @@ class APIService {
             operation: "appChargeDyn",
             data: ["id": id]
         )
+    }
+    
+    /// 收藏动态
+    func favoriteDyn(id: String) async throws -> EmptyResponse {
+        return try await NetworkService.shared.request(
+            operation: "appFavoriteDyn",
+            data: ["id": id]
+        )
+    }
+    
+    /// 取消收藏动态
+    func unfavoriteDyn(id: String) async throws -> EmptyResponse {
+        return try await NetworkService.shared.request(
+            operation: "appUnfavoriteDyn",
+            data: ["id": id]
+        )
+    }
+    
+    /// 删除动态（本人）
+    func deleteDyn(id: String) async throws -> EmptyResponse {
+        return try await NetworkService.shared.request(
+            operation: "appDeleteDyn",
+            data: ["id": id]
+        )
+    }
+    
+    /// 个人主页置顶/取消置顶（本人动态）
+    /// - Parameters:
+    ///   - postId: 动态 ID
+    ///   - pin: true=置顶到个人主页，false=取消置顶
+    func setUserProfilePin(postId: String, pin: Bool) async throws {
+        _ = try await NetworkService.shared.request(
+            operation: "appSetUserProfilePin",
+            data: ["postId": postId, "pin": pin]
+        ) as EmptyResponse
     }
     
     /// 获取话题列表
@@ -234,6 +273,26 @@ class APIService {
         )
     }
     
+    /// 获取电站（圈子）列表
+    /// - Returns: 全部电站列表
+    func getCircleList() async throws -> [CircleItem] {
+        let response: CircleListResponse = try await NetworkService.shared.request(
+            operation: "appGetCircleList",
+            data: [:]
+        )
+        return response.list
+    }
+
+    /// 获取电站详情（名称、加入状态等）
+    /// - Parameter circleId: 电站ID
+    /// - Returns: 电站详情与关注状态
+    func getCircleDetail(circleId: String) async throws -> CircleDetailResponse {
+        return try await NetworkService.shared.request(
+            operation: "appGetCircleDetail",
+            data: ["circleId": circleId]
+        )
+    }
+
     /// 获取帖子详情
     /// - Parameter id: 帖子ID
     /// - Returns: 帖子详情
@@ -475,6 +534,60 @@ class APIService {
             operation: "appUnblackUser",
             data: ["userId": userId]
         )
+    }
+    
+    /// 获取或创建与目标用户的私聊会话 ID（用于个人主页「私聊」跳转）
+    /// - Parameter userId: 目标用户 ID
+    /// - Returns: chatId 与 targetOpenId
+    func getChatId(userId: String) async throws -> ChatIdResponse {
+        return try await NetworkService.shared.request(
+            operation: "appGetChatId",
+            data: ["userId": userId]
+        )
+    }
+    
+    /// 记录访问他人主页（访客痕迹，用于最近来访等）
+    /// - Parameter userId: 被访问用户 ID
+    func recordVisit(userId: String) async throws {
+        _ = try await NetworkService.shared.request(
+            operation: "appRecordVisit",
+            data: ["userId": userId]
+        ) as EmptyResponse
+    }
+    
+    /// 设置隐身访问（VIP）：对某用户访问时是否留下访客痕迹
+    /// - Parameters:
+    ///   - userId: 目标用户 ID
+    ///   - leaveTrace: true=留下痕迹，false=不留下（隐身）
+    func setVisitStatus(userId: String, leaveTrace: Bool) async throws {
+        _ = try await NetworkService.shared.request(
+            operation: "appSetVisitStatus",
+            data: ["userId": userId, "leaveTrace": leaveTrace]
+        ) as EmptyResponse
+    }
+    
+    /// 获取隐身访问列表（对哪些用户设置了不留下访客痕迹）
+    func getNoVisitList(page: Int = 1, limit: Int = 20) async throws -> NoVisitListResponse {
+        try await NetworkService.shared.request(
+            operation: "appGetNoVisitList",
+            data: ["page": page, "limit": limit]
+        ) as NoVisitListResponse
+    }
+    
+    /// 获取「不看对方动态」列表
+    func getNoSeeList(page: Int = 1, limit: Int = 20) async throws -> NoVisitListResponse {
+        try await NetworkService.shared.request(
+            operation: "appGetNoSeeList",
+            data: ["page": page, "limit": limit]
+        ) as NoVisitListResponse
+    }
+    
+    /// 获取「不让对方看我动态」列表
+    func getNoSeeMeList(page: Int = 1, limit: Int = 20) async throws -> NoVisitListResponse {
+        try await NetworkService.shared.request(
+            operation: "appGetNoSeeMeList",
+            data: ["page": page, "limit": limit]
+        ) as NoVisitListResponse
     }
     
     /// 设置用户状态（管理员）
@@ -737,6 +850,11 @@ struct FollowStatusResponse: Codable {
     let followStatus: Int // 0: 本人, 1: 未关注, 2: 已关注, 3: 已关注你, 4: 互相关注
 }
 
+struct ChatIdResponse: Codable {
+    let chatId: String
+    let targetOpenId: String
+}
+
 struct UserActionHistory: Identifiable, Codable {
     let id: String
     let type: Int
@@ -767,6 +885,36 @@ struct DynListResponse: Codable {
     }
 }
 
+struct CircleDetailResponse: Codable {
+    let circle: CircleItem?
+    let followStatus: Int?
+
+    init(circle: CircleItem?, followStatus: Int?) {
+        self.circle = circle
+        self.followStatus = followStatus
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        circle = try c.decodeIfPresent(CircleItem.self, forKey: .circle)
+        followStatus = Self.decodeIntIfPresent(from: c, forKey: .followStatus)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(circle, forKey: .circle)
+        try c.encodeIfPresent(followStatus, forKey: .followStatus)
+    }
+
+    private enum CodingKeys: String, CodingKey { case circle, followStatus }
+
+    private static func decodeIntIfPresent(from c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Int? {
+        if let n = try? c.decodeIfPresent(Int.self, forKey: key) { return n }
+        if let s = try? c.decodeIfPresent(String.self, forKey: key), let n = Int(s) { return n }
+        return nil
+    }
+}
+
 struct EmptyResponse: Codable {}
 
 struct Topic: Identifiable, Codable {
@@ -782,6 +930,12 @@ struct ImageUploadResponse: Codable {
 // MARK: - 个人中心相关响应模型
 struct UserListResponse: Codable {
     let list: [User]
+    let total: Int?
+    let hasMore: Bool
+}
+
+struct NoVisitListResponse: Codable {
+    let list: [UserListItem]
     let total: Int?
     let hasMore: Bool
 }

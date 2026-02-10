@@ -66,10 +66,14 @@ class HomeViewModel: ObservableObject {
     }
     
     private let hapticGenerator = UIImpactFeedbackGenerator(style: .medium)
-    
+    /// 最近一次刷新是否有新内容（首条 ID 变化或从空变为有数据视为有新内容）
+    private var lastRefreshHadNewContent = true
+
     /// 下拉刷新或首次加载：重新请求列表接口（首屏，不传游标）
-    func refreshPosts() async -> Bool {
+    /// - Returns: (success, hasNewContent)：成功时 hasNewContent 表示是否有新内容；失败或取消时为 (false, nil)
+    func refreshPosts() async -> (success: Bool, hasNewContent: Bool?) {
         hapticGenerator.prepare()
+        lastRefreshHadNewContent = true
         isLoading = true
         lastError = nil
         let category = selectedCategory
@@ -81,47 +85,56 @@ class HomeViewModel: ObservableObject {
 
         print("🔄 [HomeViewModel] 开始加载动态列表 - 分类: \(category.apiType), 刷新")
         
-        do {
-            let response = try await APIService.shared.getDynList(type: category.apiType, publicTime: nil)
-            
-            print("✅ 动态列表加载成功 - 数量: \(response.list.count), 是否有更多: \(response.hasMore)")
-            // 调试：确认每条帖子的 content 是否包含 # 和 @
-            for (index, post) in response.list.enumerated() {
-                let hasTopic = post.content.contains("#")
-                let hasMention = post.content.contains("@")
-                print("📋 [Content] [\(index)] id=\(post.id.prefix(8))… content长度=\(post.content.count) 含#=\(hasTopic) 含@=\(hasMention) | content=\(post.content.prefix(80))\(post.content.count > 80 ? "…" : "")")
+        // 在独立 Task 中完成「请求 + 写回数据」，这样即使用户松手导致 .refreshable 的 Task 被取消，新内容仍会展示
+        let requestTask = Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return }
+            do {
+                let response = try await APIService.shared.getDynList(type: category.apiType, publicTime: nil)
+                await self.applyRefreshResult(category: category, response: response)
+            } catch {
+                await self.applyRefreshError(category: category, error: error)
             }
-            
-            let currentState = categoryData[category]
-            let lastVisiblePostId = currentState?.lastVisiblePostId
-            
-            categoryData[category] = CategoryState(
-                posts: response.list,
-                hasMore: response.hasMore,
-                publicTime: response.publicTime,
-                lastVisiblePostId: lastVisiblePostId
-            )
-            
-            // 刷新成功的轻微反馈
-            hapticGenerator.impactOccurred()
-            isLoading = false
-            return true
-        } catch {
-            // Task 取消（如用户离开页面）时不展示错误
-            if error is CancellationError {
-                isLoading = false
-                return false
-            }
-            print("❌ 加载动态列表失败: \(error)")
-            if let apiError = error as? APIError {
-                lastError = apiError
-                print("   API错误: \(apiError.localizedDescription)")
-            } else {
-                lastError = .unknown
-            }
-            isLoading = false
-            return false
         }
+        await requestTask.value
+        if Task.isCancelled {
+            return (false, nil)
+        }
+        return (true, lastRefreshHadNewContent)
+    }
+
+    /// 在 MainActor 上写回刷新结果（由独立 Task 调用，保证即使用户松手取消 .refreshable 也能更新列表）
+    private func applyRefreshResult(category: HomeCategory, response: DynListResponse) {
+        print("✅ 动态列表加载成功 - 数量: \(response.list.count), 是否有更多: \(response.hasMore)")
+        let currentState = categoryData[category]
+        let lastVisiblePostId = currentState?.lastVisiblePostId
+        let oldFirstId = currentState?.posts.first?.id
+        let newFirstId = response.list.first?.id
+        let wasEmpty = currentState?.posts.isEmpty ?? true
+        lastRefreshHadNewContent = (oldFirstId != newFirstId) || (wasEmpty && !response.list.isEmpty)
+        categoryData[category] = CategoryState(
+            posts: response.list,
+            hasMore: response.hasMore,
+            publicTime: response.publicTime,
+            lastVisiblePostId: lastVisiblePostId
+        )
+        hapticGenerator.impactOccurred()
+        isLoading = false
+    }
+
+    /// 在 MainActor 上写回刷新错误
+    private func applyRefreshError(category: HomeCategory, error: Error) {
+        if error is CancellationError {
+            isLoading = false
+            return
+        }
+        print("❌ 加载动态列表失败: \(error)")
+        if let apiError = error as? APIError {
+            lastError = apiError
+            print("   API错误: \(apiError.localizedDescription)")
+        } else {
+            lastError = .unknown
+        }
+        isLoading = false
     }
     
     func loadMorePosts() async {

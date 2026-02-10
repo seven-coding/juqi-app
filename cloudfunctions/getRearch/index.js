@@ -31,12 +31,13 @@ exports.main = async (event, context) => {
     }
     console.log(event)
 
-    keyword && (keyword = keyword.trim());
+    if (keyword != null && keyword !== '') {
+      keyword = String(keyword).trim();
+    }
 
-    // 文字校验
+    // 文字校验（仅当关键词存在时）
     if (keyword && keyword.length) {
       try {
-        // 避免前后多余空格
         let result = await cloud.openapi.security.msgSecCheck({
           content: keyword
         });
@@ -47,12 +48,9 @@ exports.main = async (event, context) => {
             message: '关键词包含违规内容'
           }
         }
-      } catch(error) {
-        console.log(error)
-        return {
-          code: 400,
-          message: '内容安全检查失败'
-        }
+      } catch (err) {
+        // 内容安全接口异常时（如未配置、超时、环境不可用），记录日志但不阻断搜索
+        console.warn('[getRearch] msgSecCheck 异常，继续执行搜索:', err.errMsg || err.message || err);
       }
     }
 

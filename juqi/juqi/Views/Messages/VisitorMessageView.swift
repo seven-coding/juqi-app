@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct VisitorMessageView: View {
-    @StateObject private var viewModel = MessageCategoryViewModel(messageType: 6) // 访客消息类型需要确认
+    @StateObject private var viewModel = MessageCategoryViewModel(messageType: 5) // 5=访客消息，6=关注提醒
     
     var body: some View {
         ZStack {

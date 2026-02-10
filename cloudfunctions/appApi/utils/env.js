@@ -2,10 +2,10 @@
 // 版本: 2.1.0 - App测试环境专用（修复环境初始化问题）
 const cloud = require('wx-server-sdk');
 
-// 测试环境ID
-const TEST_ENV_ID = 'test-juqi-3g1m5qa7cc2737a1';
-// 生产环境ID（用于 dataEnv='prod' 时切换到线上数据）
-const PROD_ENV_ID = 'prod-juqi-7glu2m8qfa31e13f';
+// 测试环境ID（可在 .env 中设置 TEST_ENV_ID 覆盖）
+const TEST_ENV_ID = process.env.TEST_ENV_ID || 'test-juqi-3g1m5qa7cc2737a1';
+// 生产环境ID（可在 .env 中设置 PROD_ENV_ID 覆盖；用于 dataEnv='prod' 时切换到线上数据）
+const PROD_ENV_ID = process.env.PROD_ENV_ID || 'prod-juqi-7glu2m8qfa31e13f';
 
 // 缓存当前初始化的环境ID，避免重复初始化
 let _currentEnvId = null;

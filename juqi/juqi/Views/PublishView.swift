@@ -68,6 +68,8 @@ struct MultiImagePicker: UIViewControllerRepresentable {
 struct PublishView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var activeTab: TabItem
+    /// 从话题详情页「参与话题」进入时预填的话题名
+    var initialTopic: String? = nil
     @State private var content: String = ""
     @State private var selectedCategory: PostTag = .daily
     @State private var selectedImages: [UIImage] = []
@@ -167,6 +169,10 @@ struct PublishView: View {
             }
         }
         .onAppear {
+            // 从话题详情「参与话题」进入时预填话题
+            if let topic = initialTopic, !topic.isEmpty, !selectedTopics.contains(topic) {
+                selectedTopics = [topic]
+            }
             // 加载草稿
             if let draft = UserDefaults.standard.string(forKey: draftCacheKey), !draft.isEmpty {
                 self.content = draft

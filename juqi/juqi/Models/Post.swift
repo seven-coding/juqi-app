@@ -7,7 +7,10 @@
 
 import Foundation
 
-struct Post: Identifiable, Codable {
+struct Post: Identifiable, Codable, Hashable {
+    static func == (lhs: Post, rhs: Post) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+
     let id: String
     let userId: String
     let userName: String
@@ -36,6 +39,10 @@ struct Post: Identifiable, Codable {
     let voiceDuration: TimeInterval?
     let videoUrl: String?
     let musicInfo: MusicInfo?
+    /// 正文 @ 的用户列表（id 用于跳转用户主页，与小程序/链接规则一致）
+    let mentionedUsers: [MentionedUser]?
+    /// 是否已置顶到个人主页（仅本人动态有效）
+    let isPinned: Bool?
 
     /// 解码时对可能缺失的布尔字段使用默认值，兼容服务端 JSON 序列化省略 undefined 的情况
     init(from decoder: Decoder) throws {
@@ -67,6 +74,8 @@ struct Post: Identifiable, Codable {
         voiceDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .voiceDuration)
         videoUrl = try c.decodeIfPresent(String.self, forKey: .videoUrl)
         musicInfo = try c.decodeIfPresent(MusicInfo.self, forKey: .musicInfo)
+        mentionedUsers = try c.decodeIfPresent([MentionedUser].self, forKey: .mentionedUsers)
+        isPinned = try c.decodeIfPresent(Bool.self, forKey: .isPinned)
     }
 
     /// 成员初始化器（用于 mock 与本地构造）
@@ -97,7 +106,9 @@ struct Post: Identifiable, Codable {
         voiceUrl: String? = nil,
         voiceDuration: TimeInterval? = nil,
         videoUrl: String? = nil,
-        musicInfo: MusicInfo? = nil
+        musicInfo: MusicInfo? = nil,
+        mentionedUsers: [MentionedUser]? = nil,
+        isPinned: Bool? = nil
     ) {
         self.id = id
         self.userId = userId
@@ -117,6 +128,7 @@ struct Post: Identifiable, Codable {
         self.isCollected = isCollected
         self.isCharged = isCharged
         self.repostPost = repostPost
+        self.mentionedUsers = mentionedUsers
         self.likeUsers = likeUsers
         self.joinCount = joinCount
         self.circleId = circleId
@@ -126,12 +138,19 @@ struct Post: Identifiable, Codable {
         self.voiceDuration = voiceDuration
         self.videoUrl = videoUrl
         self.musicInfo = musicInfo
+        self.isPinned = isPinned
     }
 
     struct LikeUser: Codable {
         let id: String
         let userName: String
         let avatar: String?
+    }
+
+    /// 正文 @ 提及用户（id 为 openId 或用户 id，用于 juqi://user/{id} 跳转）
+    struct MentionedUser: Codable {
+        let id: String
+        let userName: String
     }
     
     struct RepostPost: Codable {
@@ -228,6 +247,7 @@ struct VipConfig: Codable {
     let showFollower: Bool?
     let showCharge: Bool?
     let restStatus: Bool?
+    let cancelFollow: Bool?  // 接受取消关注提醒
     
     enum CodingKeys: String, CodingKey {
         case showVisit
@@ -235,6 +255,7 @@ struct VipConfig: Codable {
         case showFollower
         case showCharge
         case restStatus
+        case cancelFollow
     }
 }
 
@@ -273,7 +294,9 @@ struct UserProfile: Identifiable, Codable {
     let collectionCount: Int? // 收藏数
     let inviteCount: Int? // 邀请数
     let blockedCount: Int? // 拉黑数
-    
+    /// 当前用户对该主页用户是否处于「隐身访问」（不留下访客痕迹），仅他人主页且 VIP 时有效
+    let isInvisible: Bool?
+
     enum CodingKeys: String, CodingKey {
         case id
         case userName
@@ -304,6 +327,7 @@ struct UserProfile: Identifiable, Codable {
         case collectionCount
         case inviteCount
         case blockedCount
+        case isInvisible
     }
     
     // 判断是否是自己
@@ -342,6 +366,59 @@ struct UserProfile: Identifiable, Codable {
         }
         
         return true
+    }
+    
+    /// 从旧版接口格式解析（data 为 { userInfo: {...}, isInvisible } 或直接为 profile 对象但缺少 id 时用 userInfo 补全）
+    static func fromLegacyAPI(dataDict: [String: Any]) -> UserProfile? {
+        guard let userInfo = dataDict["userInfo"] as? [String: Any] else { return nil }
+        func str(_ key: String) -> String? { userInfo[key] as? String }
+        func int(_ key: String) -> Int {
+            guard let v = userInfo[key] else { return 0 }
+            if let n = v as? Int { return n }
+            if let s = v as? String, let n = Int(s) { return n }
+            return 0
+        }
+        func intOpt(_ key: String) -> Int? {
+            guard let v = userInfo[key] else { return nil }
+            if let n = v as? Int { return n }
+            if let s = v as? String, let n = Int(s) { return n }
+            return nil
+        }
+        let id = str("_id") ?? str("openId") ?? ""
+        let userName = str("nickName") ?? str("userName") ?? ""
+        let avatar = str("avatarVisitUrl") ?? str("avatarUrl") ?? str("avatar")
+        let followNums = int("followNums")
+        let fansNums = int("fansNums")
+        let chargeNums = int("chargeNums")
+        let dynNums = int("dynNums")
+        let usersSecret0 = (userInfo["usersSecret"] as? [[String: Any]])?.first
+        let isVip = (usersSecret0?["vipStatus"] as? Bool) ?? (userInfo["vipStatus"] as? Bool) ?? false
+        var built: [String: Any] = [
+            "id": id,
+            "userName": userName,
+            "isVip": isVip,
+            "followCount": followNums,
+            "followerCount": fansNums,
+            "chargeCount": chargeNums,
+            "chargeNums": chargeNums,
+            "publishCount": dynNums,
+            "followStatus": userInfo["followStatus"] ?? 1,
+            "blackStatus": userInfo["blackStatus"] ?? 1,
+            "joinStatus": userInfo["joinStatus"] ?? 1
+        ]
+        if let v = avatar { built["avatar"] = v }
+        if let v = userInfo["signature"] as? String, !v.isEmpty { built["signature"] = v }
+        if let v = userInfo["level"] as? Int ?? (userInfo["levelNums"] as? Int) { built["level"] = v }
+        if let v = userInfo["age"] as? Int ?? (userInfo["age"] as? String).flatMap(Int.init) { built["age"] = v }
+        if let v = userInfo["constellation"] as? String, !v.isEmpty { built["constellation"] = v }
+        if let v = userInfo["city"] as? String, !v.isEmpty { built["city"] = v }
+        if let arr = userInfo["imgList"] as? [String], !arr.isEmpty { built["imgList"] = arr }
+        else if let one = userInfo["backgroundImg"] as? String { built["imgList"] = [one] }
+        if let jsonData = try? JSONSerialization.data(withJSONObject: built),
+           let profile = try? JSONDecoder().decode(UserProfile.self, from: jsonData) {
+            return profile
+        }
+        return nil
     }
 }
 

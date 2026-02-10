@@ -14,7 +14,7 @@ class MessageViewModel: ObservableObject {
     @Published var messages: [Message] = []
     @Published var isLoading = false
     @Published var allLoaded = false
-    @Published var isEmpty = false
+    @Published var isEmpty = true  // 初始为 true，避免首屏闪出空列表再变空状态
     
     @Published var navItems: [MessageNavItem] = [
         MessageNavItem(id: 0, title: "充电", icon: "bolt.fill", count: 0, url: nil),
@@ -119,14 +119,32 @@ class MessageViewModel: ObservableObject {
                     messFromType: nil
                 )
                 
-                // 更新本地状态
+                // 更新本地状态为已读
                 if index < messages.count {
-                    // 这里需要创建一个新的Message，但Message是struct，我们需要修改状态
-                    // 由于Message是struct，我们需要重新创建
-                    // 暂时先移除未读标记
-                    let updatedMessage = messages[index]
-                    // TODO: 更新消息状态为已读
-                    _ = updatedMessage
+                    let m = messages[index]
+                    messages[index] = Message(
+                        id: m.id,
+                        from: m.from,
+                        fromName: m.fromName,
+                        fromPhoto: m.fromPhoto,
+                        type: m.type,
+                        message: m.message,
+                        msgText: m.msgText,
+                        createTime: m.createTime,
+                        formatDate: m.formatDate,
+                        status: 1,
+                        noReadCount: 0,
+                        groupType: m.groupType,
+                        groupId: m.groupId,
+                        url: m.url,
+                        chatId: m.chatId,
+                        dynId: m.dynId,
+                        user: m.user,
+                        circles: m.circles,
+                        userInfo: m.userInfo,
+                        messageInfo: m.messageInfo,
+                        riskControlReason: m.riskControlReason
+                    )
                 }
             } catch {
                 print("标记已读失败: \(error)")
@@ -159,9 +177,10 @@ class MessageViewModel: ObservableObject {
     
     /// 点击导航栏项
     func onNavItemTap(_ index: Int) {
-        // 清除该分类的未读数量
+        // 清除该分类的未读数量（需替换整个元素以触发 @Published）
         if index < navItems.count {
-            navItems[index].count = 0
+            let item = navItems[index]
+            navItems[index] = MessageNavItem(id: item.id, title: item.title, icon: item.icon, count: 0, url: item.url)
         }
     }
     

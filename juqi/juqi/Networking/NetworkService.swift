@@ -265,7 +265,33 @@ class NetworkService {
                 }
                 return Date(timeIntervalSince1970: timestamp)
             }
-            let apiResponse = try decoder.decode(APIResponse<T>.self, from: responseData)
+            var apiResponse: APIResponse<T>
+            do {
+                apiResponse = try decoder.decode(APIResponse<T>.self, from: responseData)
+            } catch let decodeError as DecodingError {
+                // 兼容旧版 appGetUserProfile 返回 data: { userInfo, isInvisible }（无 data.id）导致解码失败
+                if operation == "appGetUserProfile",
+                   let top = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+                   (top["code"] as? Int) == 200,
+                   let dataAny = top["data"], let dataDict = dataAny as? [String: Any],
+                   let profile = UserProfile.fromLegacyAPI(dataDict: dataDict) {
+                    if useCache {
+                        let cacheKey = generateCacheKey(operation: operation, data: data)
+                        CacheService.shared.cacheResponse(profile, for: cacheKey)
+                    }
+                    return profile as! T
+                }
+                // 兼容部分电站 appGetCircleDetail 返回 data 为圈子对象直接包装（非 { circle, followStatus }）
+                if operation == "appGetCircleDetail",
+                   let fallback = Self.decodeCircleDetailFallback(from: responseData, decoder: decoder) {
+                    if useCache {
+                        let cacheKey = generateCacheKey(operation: operation, data: data)
+                        CacheService.shared.cacheResponse(fallback, for: cacheKey)
+                    }
+                    return fallback as! T
+                }
+                throw decodeError
+            }
             
             // 处理API错误码
             if apiResponse.code == 401 {
@@ -277,14 +303,15 @@ class NetworkService {
             }
             
             if apiResponse.code != 200 {
-                print("❌ [API Error] operation: \(operation), code: \(apiResponse.code), message: \(apiResponse.message)")
+                let msg = apiResponse.message ?? "请求失败"
+                print("❌ [API Error] operation: \(operation), code: \(apiResponse.code), message: \(msg)")
                 
                 // 兼容服务端返回的 request timeout 消息，映射为客户端的 timeout 错误
-                if apiResponse.code == 500 && apiResponse.message.lowercased().contains("timeout") {
+                if apiResponse.code == 500 && msg.lowercased().contains("timeout") {
                     throw APIError.timeout
                 }
                 
-                throw APIError.apiError(code: apiResponse.code, message: apiResponse.message)
+                throw APIError.apiError(code: apiResponse.code, message: msg)
             }
             
             guard let resultData = apiResponse.data else {
@@ -355,7 +382,21 @@ class NetworkService {
     }
     
     // MARK: - 辅助方法
-    
+
+    /// 当 appGetCircleDetail 标准解码失败时，尝试将 data 视为圈子对象直接解码（部分电站返回格式不同）
+    private static func decodeCircleDetailFallback(from responseData: Data, decoder: JSONDecoder) -> CircleDetailResponse? {
+        guard let top = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+              let code = top["code"] as? Int, (code == 200 || code == 201),
+              let dataAny = top["data"] else { return nil }
+        // data 可能是 { circle, followStatus } 或 直接为圈子对象
+        if let dataDict = dataAny as? [String: Any],
+           let dataJson = try? JSONSerialization.data(withJSONObject: dataDict),
+           let circle = try? decoder.decode(CircleItem.self, from: dataJson) {
+            return CircleDetailResponse(circle: circle, followStatus: nil)
+        }
+        return nil
+    }
+
     private func generateCacheKey(operation: String, data: [String: Any]) -> String {
         // 将字典转换为排序后的键值对数组，然后序列化为JSON
         let sortedKeys = data.keys.sorted()
@@ -698,7 +739,8 @@ class NetworkService {
                 publishCount: 20,
                 collectionCount: 5,
                 inviteCount: 2,
-                blockedCount: 0
+                blockedCount: 0,
+                isInvisible: nil
             )
             return profile as! T
             
@@ -739,7 +781,8 @@ class NetworkService {
                 publishCount: targetUserId == "1" ? 15 : Int.random(in: 5...30),
                 collectionCount: targetUserId == "1" ? 8 : Int.random(in: 3...20),
                 inviteCount: targetUserId == "1" ? 3 : Int.random(in: 0...10),
-                blockedCount: targetUserId == "1" ? 0 : Int.random(in: 0...5)
+                blockedCount: targetUserId == "1" ? 0 : Int.random(in: 0...5),
+                isInvisible: nil
             )
             return profile as! T
             
@@ -948,6 +991,21 @@ class NetworkService {
             )
             return response as! T
             
+        case "appGetChatId":
+            let targetId = data["userId"] as? String ?? "target_user"
+            return ChatIdResponse(chatId: "mock_chat_\(targetId)", targetOpenId: targetId) as! T
+
+        case "appRecordVisit":
+            return EmptyResponse() as! T
+        case "appSetVisitStatus":
+            return EmptyResponse() as! T
+        case "appGetNoVisitList":
+            return NoVisitListResponse(list: [], total: 0, hasMore: false) as! T
+        case "appSetUserProfilePin":
+            return EmptyResponse() as! T
+        case "appGetNoSeeList", "appGetNoSeeMeList":
+            return NoVisitListResponse(list: [], total: 0, hasMore: false) as! T
+
         case "setMessage":
             // 模拟设置消息状态响应
             return EmptyResponse() as! T
@@ -961,5 +1019,5 @@ class NetworkService {
 struct APIResponse<T: Codable>: Codable {
     let code: Int
     let data: T?
-    let message: String
+    let message: String?
 }

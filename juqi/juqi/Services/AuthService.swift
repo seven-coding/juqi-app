@@ -158,7 +158,7 @@ class AuthService: ObservableObject {
     
     // MARK: - 测试登录（仅开发调试使用，使用测试环境真实 token）
     #if DEBUG
-    /// 测试环境固定 code，后端会返回固定测试用户（openId: test_openid_app）的 token
+    /// 测试环境固定 code，后端按数据源返回对应 openId 的 token（测试数据: test_openid_app；正式数据: onosB5tACzoeLWFjfurUEPweaAU0）
     private static let testLoginCode = "test_app_debug"
 
     /// 测试登录 - 调用真实 appLogin 接口，用测试 code 获取真实 token，进入首页后可正常拉取数据

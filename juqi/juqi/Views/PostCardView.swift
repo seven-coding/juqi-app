@@ -19,6 +19,13 @@ struct CardButtonStyle: ButtonStyle {
 
 struct PostCardView: View {
     let post: Post
+    /// 由父视图在懒容器外处理导航时传入，避免 navigationDestination 放在 List/LazyVStack 内的警告
+    var onNavigateToDetail: ((Post) -> Void)? = nil
+    var onNavigateToUser: ((String) -> Void)? = nil
+    var onNavigateToTopic: ((String) -> Void)? = nil
+    /// 当前所在话题名（如话题详情页）。点击同一话题时不导航，避免重复打开同一页（业内通用：同上下文不二次导航）
+    var currentTopicName: String? = nil
+
     @State private var isLiked = false
     @State private var isCollected = false
     @State private var isReposted = false
@@ -29,18 +36,24 @@ struct PostCardView: View {
     @State private var isNavigatingToDetail = false
     @State private var navigationTopic: String? = nil
     @State private var navigationUser: String? = nil
-    
+
+    /// 是否由本视图自己处理导航（未传回调时），用于条件性添加 navigationDestination
+    private var useLocalNavigation: Bool {
+        onNavigateToDetail == nil && onNavigateToUser == nil && onNavigateToTopic == nil
+    }
+
     private let maxCollapsedLines = 5
     
     // MARK: - 转发内容区域 (匹配截图样式)
     private func repostSection(_ repost: Post.RepostPost) -> some View {
         Button(action: {
-            isNavigatingToDetail = true
+            if let onNavigateToDetail { onNavigateToDetail(post) } else { isNavigatingToDetail = true }
         }) {
             HStack(spacing: 12) {
                 // 被转发人头像（可点击跳转）
                 Button(action: {
-                    navigationUser = repost.userId ?? ""
+                    let uid = repost.userId ?? ""
+                    if let onNavigateToUser { onNavigateToUser(uid) } else { navigationUser = uid }
                 }) {
                     AsyncImage(url: URL(string: repost.userAvatar ?? "")) { image in
                         image
@@ -59,7 +72,8 @@ struct PostCardView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // 被转发人名称 (白色加粗，可点击跳转)
                     Button(action: {
-                        navigationUser = repost.userId ?? ""
+                        let uid = repost.userId ?? ""
+                        if let onNavigateToUser { onNavigateToUser(uid) } else { navigationUser = uid }
                     }) {
                         Text(repost.userName)
                             .font(.system(size: 15, weight: .bold))
@@ -94,7 +108,7 @@ struct PostCardView: View {
                     // 左侧头像（独立点击事件）
                     VStack {
                         Button(action: {
-                            navigationUser = post.userId
+                            if let onNavigateToUser { onNavigateToUser(post.userId) } else { navigationUser = post.userId }
                         }) {
                             AsyncImage(url: URL(string: post.userAvatar ?? "")) { image in
                                 image
@@ -122,7 +136,7 @@ struct PostCardView: View {
                         // 用户名（加粗高亮，带VIP标识）
                         HStack(alignment: .center, spacing: 6) {
                             Button(action: {
-                                navigationUser = post.userId
+                                if let onNavigateToUser { onNavigateToUser(post.userId) } else { navigationUser = post.userId }
                             }) {
                                 Text(post.userName.isEmpty ? "匿名用户" : post.userName)
                                     .font(.system(size: 15, weight: .bold))
@@ -152,10 +166,10 @@ struct PostCardView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             if isExpanded {
                                 // 展开状态：显示全部内容
-                                RichTextView(text: post.content)
+                                RichTextView(text: post.content, mentionedUsers: post.mentionedUsers, currentTopicName: currentTopicName)
                             } else {
                                 // 折叠状态：最多显示5行
-                                RichTextView(text: post.content)
+                                RichTextView(text: post.content, mentionedUsers: post.mentionedUsers, currentTopicName: currentTopicName)
                                     .lineLimit(maxCollapsedLines)
                             }
                             
@@ -230,7 +244,7 @@ struct PostCardView: View {
                                     count: post.commentCount,
                                     color: Color(hex: "#71767A"),
                                     action: {
-                                        isNavigatingToDetail = true
+                                        if let onNavigateToDetail { onNavigateToDetail(post) } else { isNavigatingToDetail = true }
                                     }
                                 )
                                 
@@ -267,7 +281,7 @@ struct PostCardView: View {
                 .padding(.vertical, 12)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    isNavigatingToDetail = true
+                    if let onNavigateToDetail { onNavigateToDetail(post) } else { isNavigatingToDetail = true }
                 }
             }
             .background(Color.black)
@@ -292,10 +306,15 @@ struct PostCardView: View {
                 let host = url.host ?? ""
                 let path = url.path.replacingOccurrences(of: "/", with: "").removingPercentEncoding ?? ""
                 if host == "user" {
-                    // 优先通过 openURL 处理，如果环境不支持则回退
+                    if let onNavigateToUser { onNavigateToUser(path); return .handled }
                     navigationUser = path
                     return .handled
                 } else if host == "topic" {
+                    let pathTopic = path.trimmingCharacters(in: .whitespaces)
+                    if let cur = currentTopicName?.trimmingCharacters(in: .whitespaces), !cur.isEmpty, pathTopic == cur {
+                        return .handled
+                    }
+                    if let onNavigateToTopic { onNavigateToTopic(path); return .handled }
                     navigationTopic = path
                     return .handled
                 }
@@ -303,18 +322,42 @@ struct PostCardView: View {
             }
             return .systemAction
         })
-        .navigationDestination(isPresented: $isNavigatingToDetail) {
-            PostDetailView(post: post)
-        }
-        .navigationDestination(isPresented: Binding(get: { navigationUser != nil }, set: { if !$0 { navigationUser = nil } })) {
-            if let userId = navigationUser {
-                UserProfileView(userId: userId, userName: "")
-            }
-        }
-        .navigationDestination(isPresented: Binding(get: { navigationTopic != nil }, set: { if !$0 { navigationTopic = nil } })) {
-            if let topicName = navigationTopic {
-                TopicDetailView(topicName: topicName)
-            }
+        .modifier(PostCardNavigationDestinations(
+            useLocal: useLocalNavigation,
+            post: post,
+            isNavigatingToDetail: $isNavigatingToDetail,
+            navigationUser: $navigationUser,
+            navigationTopic: $navigationTopic
+        ))
+    }
+}
+
+// MARK: - 仅在不使用父级导航回调时添加 navigationDestination，避免放在 LazyVStack 内触发警告
+private struct PostCardNavigationDestinations: ViewModifier {
+    let useLocal: Bool
+    let post: Post
+    @Binding var isNavigatingToDetail: Bool
+    @Binding var navigationUser: String?
+    @Binding var navigationTopic: String?
+
+    func body(content: Content) -> some View {
+        if useLocal {
+            content
+                .navigationDestination(isPresented: $isNavigatingToDetail) {
+                    PostDetailView(post: post)
+                }
+                .navigationDestination(isPresented: Binding(get: { navigationUser != nil }, set: { if !$0 { navigationUser = nil } })) {
+                    if let userId = navigationUser {
+                        UserProfileView(userId: userId, userName: "")
+                    }
+                }
+                .navigationDestination(isPresented: Binding(get: { navigationTopic != nil }, set: { if !$0 { navigationTopic = nil } })) {
+                    if let topicName = navigationTopic {
+                        TopicDetailView(topicName: topicName)
+                    }
+                }
+        } else {
+            content
         }
     }
 }

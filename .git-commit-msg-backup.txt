@@ -1,0 +1,26 @@
+chore(backup): 2025-02-10
+
+新增（Added）
+- 消息：不看TA、不让TA看、未访问列表视图（NoSeeListView、NoSeeMeListView、NoVisitListView）
+- 圈子：CircleItem 模型
+- 文档：今日AI请求、日复盘、版本与进度、消息页架构审查、用户头像取数、电站与话题页、帖子详情UI对比等
+- 脚本：复盘与导出相关 scripts
+
+变更（Changed）
+- 首页：HomeView、HomeViewModel 与动态列表联调
+- 发现：DiscoverView 与 getRearch、search 模块对接
+- 帖子详情：PostDetailView、CircleDetailView、TopicDetailView、UserProfileView、RepostSheetView、RichTextView 与 getDynDetail
+- 消息：MessageView、MessageViewModel、VisitorMessageView
+- 个人页：ProfileView、UserProfileView、getUserAbout/getOperateAction
+- 发布：PublishView、PostCardView
+- 登录/账号：AuthService、appApi/modules/auth
+- appApi/云函数：search、user、circle、dyn 模块扩展；getDynsListV2、getDynDetail、getRearch 联调
+- 文档：App接口文档更新
+- 部署：deploy-all、run-full-deploy、env 配置；删除 .env.example、setMessage/deploy.zip
+
+修复（Fixed）
+- 无
+
+未完成（Pending）
+- 帖子详情：评论列表与接口联调（一级/二级、点赞、图片）
+- 帖子详情：评论输入与提交联调（一级/二级评论、评论图片上传）

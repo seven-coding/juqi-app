@@ -36,18 +36,18 @@ async function Login(event) {
     let openId;
     let unionId = null;
 
-    // 开发模式：固定测试 code 使用固定 openId，便于 App 端「测试登录」拿到稳定用户 token 并拉取数据
+    // 固定测试 code：按数据源返回对应 openId（App 设置页可切换测试/正式数据源）
     const TEST_APP_CODE = 'test_app_debug';
-    const TEST_APP_OPENID = 'test_openid_app';
+    const TEST_APP_OPENID = 'test_openid_app';           // 测试环境数据源
+    const TEST_APP_OPENID_PROD = 'onosB5tACzoeLWFjfurUEPweaAU0'; // 正式环境数据源
 
-    if (DEV_MODE) {
-      if (code === TEST_APP_CODE) {
-        openId = TEST_APP_OPENID;
-        console.log('[appLogin] 开发模式: 使用固定测试用户 openId:', openId);
-      } else {
-        openId = `wechat_${code}_${Date.now()}`;
-        console.log('[appLogin] 开发模式: 使用模拟openId:', openId);
-      }
+    const dataEnv = event.dataEnv || 'test';
+    if (code === TEST_APP_CODE) {
+      openId = dataEnv === 'prod' ? TEST_APP_OPENID_PROD : TEST_APP_OPENID;
+      console.log('[appLogin] 测试登录: dataEnv=', dataEnv, 'openId=', openId);
+    } else if (DEV_MODE) {
+      openId = `wechat_${code}_${Date.now()}`;
+      console.log('[appLogin] 开发模式: 使用模拟openId:', openId);
     } else {
       // 生产模式：调用真实的微信开放平台API
       try {

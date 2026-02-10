@@ -30,6 +30,11 @@ struct UserProfileView: View {
     @State private var showFollowerList = false
     @State private var showChargeList = false
     @State private var currentUserId: String? = nil
+    @State private var currentUserIsVip: Bool = false
+    @State private var navigationUserId: String? = nil  // 用于导航到其他用户主页
+    @State private var showHeaderImagePreview = false
+    @State private var headerPreviewImages: [String] = []
+    @State private var headerPreviewIndex = 0
     
     var body: some View {
         ZStack {
@@ -78,6 +83,11 @@ struct UserProfileView: View {
             async let _posts: Void = loadUserPosts()
             _ = await (_profile, _posts)
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PostDetailDidPinChange"))) { _ in
+            if userProfile?.isOwnProfile == true {
+                Task { await refreshData() }
+            }
+        }
         .confirmationDialog(confirmDialogTitle, isPresented: $showConfirmDialog, titleVisibility: .visible) {
             Button("确定", role: .destructive) {
                 confirmDialogAction?()
@@ -85,6 +95,9 @@ struct UserProfileView: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text(confirmDialogMessage)
+        }
+        .fullScreenCover(isPresented: $showHeaderImagePreview) {
+            ImagePreviewView(images: headerPreviewImages, currentIndex: headerPreviewIndex)
         }
         .sheet(isPresented: $showFollowList) {
             if let userId = userProfile?.id {
@@ -115,6 +128,14 @@ struct UserProfileView: View {
             )
         }
         .toolbar(.hidden, for: .tabBar)
+        .navigationDestination(isPresented: Binding(
+            get: { navigationUserId != nil },
+            set: { if !$0 { navigationUserId = nil } }
+        )) {
+            if let targetId = navigationUserId {
+                UserProfileView(userId: targetId, userName: "")
+            }
+        }
     }
     
     // MARK: - 正常内容视图
@@ -151,7 +172,12 @@ struct UserProfileView: View {
                     } else if !posts.isEmpty {
                         VStack(spacing: 0) {
                             ForEach(posts) { post in
-                                PostCardView(post: post)
+                                PostCardView(post: post, onNavigateToUser: { targetUserId in
+                                    // 如果点击的是当前主页用户的头像/昵称，则不进行导航
+                                    if targetUserId != userId {
+                                        navigationUserId = targetUserId
+                                    }
+                                })
                                     .overlay(
                                         Rectangle()
                                             .frame(height: 0.5)
@@ -212,10 +238,17 @@ struct UserProfileView: View {
             .frame(width: 132, height: 132)
             .clipShape(Circle())
             
-            // 用户名
-            Text(profile.userName.isEmpty ? "匿名用户" : profile.userName)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white)
+            // 用户名 + 会员图标
+            HStack(spacing: 6) {
+                Text(profile.userName.isEmpty ? "匿名用户" : profile.userName)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                if profile.isVip || profile.vipStatus == true {
+                    Image(systemName: "crown.fill")
+                        .foregroundColor(Color(hex: "#FFD700"))
+                        .font(.system(size: 16))
+                }
+            }
             
             // 提示信息
             VStack(spacing: 8) {
@@ -248,10 +281,17 @@ struct UserProfileView: View {
             .frame(width: 132, height: 132)
             .clipShape(Circle())
             
-            // 用户名
-            Text(profile.userName.isEmpty ? "匿名用户" : profile.userName)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white)
+            // 用户名 + 会员图标
+            HStack(spacing: 6) {
+                Text(profile.userName.isEmpty ? "匿名用户" : profile.userName)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                if profile.isVip || profile.vipStatus == true {
+                    Image(systemName: "crown.fill")
+                        .foregroundColor(Color(hex: "#FFD700"))
+                        .font(.system(size: 16))
+                }
+            }
             
             // 状态提示
             VStack(spacing: 8) {
@@ -385,7 +425,12 @@ struct UserProfileView: View {
                     } else if !posts.isEmpty {
                         VStack(spacing: 0) {
                             ForEach(posts) { post in
-                                PostCardView(post: post)
+                                PostCardView(post: post, onNavigateToUser: { targetUserId in
+                                    // 如果点击的是当前主页用户的头像/昵称，则不进行导航
+                                    if targetUserId != userId {
+                                        navigationUserId = targetUserId
+                                    }
+                                })
                                     .overlay(
                                         Rectangle()
                                             .frame(height: 0.5)
@@ -435,7 +480,9 @@ struct UserProfileView: View {
                 Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
-                    // TODO: 跳转私聊页面
+                    Task {
+                        await openChatWithUser(userId: userId, userName: userName)
+                    }
                 }) {
                     VStack(spacing: 6) {
                         Image(systemName: "message")
@@ -577,23 +624,29 @@ struct UserProfileView: View {
                 Spacer()
             }
             
-            // 标签（在头像下方）
-            HStack(spacing: 8) {
-                if let age = profile.age {
-                    TagView(text: "\(age)")
+            // 标签（在头像下方）：有任一标签数据时才显示整行，避免空占位
+            if profile.age != nil
+                || (profile.constellation?.isEmpty == false)
+                || (profile.city?.isEmpty == false)
+                || profile.joinStatus == .pending
+                || profile.joinStatus == .pendingVoice
+            {
+                HStack(spacing: 8) {
+                    if let age = profile.age {
+                        TagView(text: "\(age)")
+                    }
+                    if let constellation = profile.constellation, !constellation.isEmpty {
+                        TagView(text: constellation)
+                    }
+                    if let city = profile.city, !city.isEmpty {
+                        TagView(text: city)
+                    }
+                    if profile.joinStatus == .pending || profile.joinStatus == .pendingVoice {
+                        TagView(text: "待验证", color: Color(hex: "#10AEFF"))
+                    }
                 }
-                if let constellation = profile.constellation {
-                    TagView(text: constellation)
-                }
-                if let city = profile.city {
-                    TagView(text: city)
-                }
-                // 待验证标签
-                if let joinStatus = profile.joinStatus, joinStatus == .pending || joinStatus == .pendingVoice {
-                    TagView(text: "待验证", color: Color(hex: "#10AEFF"))
-                }
+                .padding(.top, 8)
             }
-            .padding(.top, 8)
             
             // 关注/粉丝/充电
             HStack(spacing: 20) {
@@ -649,33 +702,71 @@ struct UserProfileView: View {
         .padding(.horizontal, 16)
     }
     
-    // MARK: - 头图列表
+    // MARK: - 头图列表（加载中/失败态 + 点击查看大图）
     private func headerImageList(images: [String]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(images, id: \.self) { imageUrl in
-                    AsyncImage(url: URL(string: imageUrl)) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Rectangle()
-                            .fill(Color(hex: "#2F3336"))
-                    }
-                    .frame(width: 100, height: 100)
-                    .cornerRadius(8)
-                    .clipped()
+                ForEach(Array(images.enumerated()), id: \.offset) { index, imageUrl in
+                    headerImageCell(url: imageUrl)
+                        .onTapGesture {
+                            headerPreviewImages = images
+                            headerPreviewIndex = index
+                            showHeaderImagePreview = true
+                        }
                 }
             }
             .padding(.horizontal, 16)
         }
     }
     
+    private func headerImageCell(url: String) -> some View {
+        Group {
+            if let u = URL(string: url) {
+                AsyncImage(url: u) { phase in
+                    switch phase {
+                    case .empty:
+                        Rectangle()
+                            .fill(Color(hex: "#2F3336"))
+                            .overlay(ProgressView().tint(.white))
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    case .failure:
+                        Rectangle()
+                            .fill(Color(hex: "#2F3336"))
+                            .overlay(
+                                Image(systemName: "photo")
+                                    .font(.title2)
+                                    .foregroundColor(.white.opacity(0.5))
+                            )
+                    @unknown default:
+                        Rectangle()
+                            .fill(Color(hex: "#2F3336"))
+                    }
+                }
+            } else {
+                Rectangle()
+                    .fill(Color(hex: "#2F3336"))
+                    .overlay(
+                        Image(systemName: "photo")
+                            .font(.title2)
+                            .foregroundColor(.white.opacity(0.5))
+                    )
+            }
+        }
+        .frame(width: 100, height: 100)
+        .cornerRadius(8)
+        .clipped()
+    }
+    
     // MARK: - 底部操作栏（iOS 26 液态玻璃设计）
     private func bottomActionBar(profile: UserProfile) -> some View {
         let followStatus = profile.followStatus ?? .notFollowing
         let isFollowing = followStatus == .following || followStatus == .mutual
-        
+        // nil 视为未充电，仅 true 为已充电，避免状态显示异常
+        let isCharged = profile.chargingStatus == true
+
         return HStack(spacing: 12) {
             // 已关注状态下，添加左侧弹性空间实现居中
             if isFollowing {
@@ -688,7 +779,9 @@ struct UserProfileView: View {
                 Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
-                    // TODO: 跳转私聊页面
+                    Task {
+                        await openChatWithUser(userId: profile.id, userName: profile.userName)
+                    }
                 }) {
                     VStack(spacing: 6) {
                         Image(systemName: "message")
@@ -722,18 +815,18 @@ struct UserProfileView: View {
                     }
                 }) {
                     VStack(spacing: 6) {
-                        Image(systemName: profile.chargingStatus == false ? "battery.0" : "battery.100")
+                        Image(systemName: isCharged ? "battery.100" : "battery.0")
                             .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(profile.chargingStatus == false ? .white : Color(hex: "#FF6B35"))
-                        Text(profile.chargingStatus == false ? "充电" : "已充电")
+                            .foregroundColor(isCharged ? Color(hex: "#FF6B35") : .white)
+                        Text(isCharged ? "已充电" : "充电")
                             .font(.system(size: 13, weight: .medium))
                     }
-                    .foregroundColor(profile.chargingStatus == false ? .white : Color(hex: "#FF6B35"))
+                    .foregroundColor(isCharged ? Color(hex: "#FF6B35") : .white)
                     .frame(width: 80)
                     .padding(.vertical, 10)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(profile.chargingStatus == false ? false : true)
+                .disabled(isCharged)
             }
             .background {
                 liquidGlassEffect(cornerRadius: 32)
@@ -831,7 +924,10 @@ struct UserProfileView: View {
                 UIPasteboard.general.string = profile.id
             }))
         } else {
-            // 他人主页：拉黑/取消拉黑、隐身访问
+            // 他人主页：分享主页、拉黑/取消拉黑、隐身访问
+            items.append(ActionSheetItem(title: "分享主页", action: {
+                shareUserProfile(userId: profile.id, userName: profile.userName)
+            }))
             if let blackStatus = profile.blackStatus {
                 if blackStatus == .blackedOther || blackStatus == .mutualBlack {
                     items.append(ActionSheetItem(title: "取消拉黑", action: {
@@ -852,10 +948,13 @@ struct UserProfileView: View {
                 }
             }
             
-            // 隐身访问（需要VIP）
-            if profile.vipStatus == true {
-                items.append(ActionSheetItem(title: "隐身访问", action: {
-                    // TODO: 实现隐身访问
+            // 隐身访问（仅当前用户为 VIP 时显示）
+            if currentUserIsVip {
+                let isInvisible = profile.isInvisible ?? false
+                items.append(ActionSheetItem(title: isInvisible ? "取消隐身" : "隐身访问", action: {
+                    Task {
+                        await setVisitStatusAndReload(profile: profile, leaveTrace: isInvisible)
+                    }
                 }))
             }
         }
@@ -871,12 +970,41 @@ struct UserProfileView: View {
         showConfirmDialog = true
     }
     
+    /// 设置隐身访问并刷新主页数据
+    private func setVisitStatusAndReload(profile: UserProfile, leaveTrace: Bool) async {
+        do {
+            try await APIService.shared.setVisitStatus(userId: profile.id, leaveTrace: leaveTrace)
+            await loadUserProfile()
+        } catch {
+            print("设置隐身访问失败: \(error)")
+        }
+    }
+    
+    /// 分享他人主页：生成链接/文案并用系统分享
+    private func shareUserProfile(userId: String, userName: String) {
+        let link = "https://app.juqi.life/user?userId=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
+        let text = "来橘气看看 \(userName.isEmpty ? "TA" : userName) 的主页吧 \(link)"
+        let activityVC = UIActivityViewController(
+            activityItems: [text],
+            applicationActivities: nil
+        )
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            var top = rootViewController
+            while let presented = top.presentedViewController {
+                top = presented
+            }
+            top.present(activityVC, animated: true)
+        }
+    }
+    
     // MARK: - 数据加载
     private func loadCurrentUserId() async {
         do {
             let profile = try await APIService.shared.getCurrentUserProfile()
             await MainActor.run {
                 currentUserId = profile.id
+                currentUserIsVip = profile.isVip || (profile.vipStatus == true)
             }
         } catch {
             print("Failed to load current user ID: \(error)")
@@ -888,6 +1016,9 @@ struct UserProfileView: View {
             let profile = try await APIService.shared.getUserProfile(userId: userId)
             await MainActor.run {
                 userProfile = profile
+            }
+            if !profile.isOwnProfile {
+                try? await APIService.shared.recordVisit(userId: userId)
             }
         } catch {
             print("Failed to load user profile: \(error)")
@@ -939,9 +1070,22 @@ struct UserProfileView: View {
         isLoading = false
     }
     
+    // MARK: - 私聊跳转（获取/创建会话后切到消息 Tab）
+    private func openChatWithUser(userId: String, userName: String) async {
+        do {
+            _ = try await APIService.shared.getChatId(userId: userId)
+            await MainActor.run {
+                NotificationCenter.default.post(name: Notification.Name("SwitchToMessageTab"), object: nil)
+            }
+        } catch {
+            print("Failed to get chat: \(error)")
+        }
+    }
+    
     // MARK: - 交互功能
     private func handleCharge(profile: UserProfile) async {
-        guard profile.chargingStatus == false else {
+        // 仅当明确已充电时不再请求；nil 视为未充电允许点击
+        guard profile.chargingStatus != true else {
             return
         }
         

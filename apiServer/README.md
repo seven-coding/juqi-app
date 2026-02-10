@@ -61,9 +61,15 @@ npm run start:prod
 ### 云托管部署
 
 1. 构建项目：`npm run build`
-2. 在云托管服务中配置环境变量
+2. **在云托管服务中配置环境变量**（必做，否则登录等接口会报 500）
+   - 打开 [云开发控制台](https://console.cloud.tencent.com/tcb) → 云托管 → 找到 apiServer 对应服务
+   - 编辑服务 → 配置 → 环境变量，新增：
+     - `CLOUD_BASE_ID` = 腾讯云「访问管理 → [API 密钥管理](https://console.cloud.tencent.com/cam/capi)」中的 **SecretId**
+     - `CLOUD_BASE_KEY` = 上述密钥对应的 **SecretKey**
+   - 必须使用 **SecretId/SecretKey**，不能使用云开发 API Key（JWT），否则会报错：`The SecretId doesn't exist or the token parameter in the temporary key is missing`
 3. 上传构建后的代码（包含 `dist` 目录）
 4. 配置启动命令：`node dist/main.js`
+5. 修改环境变量后需重新发布版本或重启服务使配置生效
 
 ## API接口
 

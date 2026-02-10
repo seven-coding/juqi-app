@@ -16,7 +16,12 @@ if (!fs.existsSync(cloudbasercPath)) {
 }
 
 const cloudbaserc = JSON.parse(fs.readFileSync(cloudbasercPath, 'utf8'));
-const functions = cloudbaserc.functions || [];
+let functions = cloudbaserc.functions || [];
+const deployOnly = process.env.DEPLOY_ONLY ? process.env.DEPLOY_ONLY.split(',').map(s => s.trim()).filter(Boolean) : null;
+if (deployOnly && deployOnly.length > 0) {
+  functions = functions.filter(fn => deployOnly.includes(fn.name));
+  console.log('按需部署，仅更新:', deployOnly.join(', '));
+}
 const { deployFunction } = require('./appApi/deploy.js');
 
 async function main() {

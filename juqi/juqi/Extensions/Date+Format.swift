@@ -8,7 +8,7 @@
 import Foundation
 
 extension Date {
-    /// 格式化消息日期，参考小程序逻辑
+    /// 格式化消息/帖子日期，与帖子 timeAgo、小程序 getDateDiff 规则一致
     func formatMessageDate() -> String {
         let now = Date()
         

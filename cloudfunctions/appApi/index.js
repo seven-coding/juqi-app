@@ -114,6 +114,7 @@ exports.main = async (event, context) => {
     const { TEST_ENV_ID, PROD_ENV_ID } = require('./utils/env');
     const envId = envDataEnv === 'prod' ? PROD_ENV_ID : TEST_ENV_ID;
     event.envId = envId;
+    event.dataEnv = envDataEnv; // 供模块区分：dataEnv=prod 时用当前 db（生产数据），子调用用测试环境逻辑
 
     // 根据 dataEnv 初始化云开发环境（只在此处初始化一次）
     const { db, _, $ } = initCloudBySource(source || 'v2', context, envDataEnv);
@@ -182,7 +183,13 @@ exports.main = async (event, context) => {
                normalizedOperation.startsWith('appGetInviteCode') || 
                normalizedOperation.startsWith('appGetInviteCount') || 
                normalizedOperation.startsWith('appSaveAddress') ||
-               normalizedOperation.startsWith('appUpdateVipConfig')) {
+               normalizedOperation.startsWith('appUpdateVipConfig') ||
+               normalizedOperation.startsWith('appGetChatId') ||
+               normalizedOperation.startsWith('appRecordVisit') ||
+               normalizedOperation.startsWith('appSetVisitStatus') ||
+               normalizedOperation.startsWith('appGetNoVisitList') ||
+               normalizedOperation.startsWith('appGetNoSeeList') ||
+               normalizedOperation.startsWith('appGetNoSeeMeList')) {
       module = MODULES.user;
     } else if (normalizedOperation.startsWith('appGetDyn') || 
                normalizedOperation.startsWith('appPublishDyn') || 
@@ -192,7 +199,10 @@ exports.main = async (event, context) => {
                normalizedOperation.startsWith('appLikeComment') || 
                normalizedOperation.startsWith('appDeleteComment') || 
                normalizedOperation.startsWith('appRepostDyn') || 
-               normalizedOperation.startsWith('appChargeDyn')) {
+               normalizedOperation.startsWith('appChargeDyn') || 
+               normalizedOperation.startsWith('appFavoriteDyn') || 
+               normalizedOperation.startsWith('appUnfavoriteDyn') ||
+               normalizedOperation.startsWith('appSetUserProfilePin')) {
       module = MODULES.dyn;
     } else if (normalizedOperation.startsWith('appGetCircle') || 
                normalizedOperation.startsWith('appGetTopic') || 

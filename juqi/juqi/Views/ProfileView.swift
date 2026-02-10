@@ -197,6 +197,14 @@ struct ProfileView: View {
             Spacer()
             
             Button(action: {
+                shareMyProfile()
+            }) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 18, weight: .light))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            
+            Button(action: {
                 showQRCode = true
             }) {
                 Image(systemName: "qrcode")
@@ -205,6 +213,25 @@ struct ProfileView: View {
             }
         }
         .padding(.horizontal, 24)
+    }
+    
+    /// 分享我的主页：链接+文案，系统分享
+    private func shareMyProfile() {
+        guard let profile = userProfile else { return }
+        let link = "https://app.juqi.life/user?userId=\(profile.id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? profile.id)"
+        let text = "来橘气看看我的主页吧 \(link)"
+        let activityVC = UIActivityViewController(
+            activityItems: [text],
+            applicationActivities: nil
+        )
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            var top = rootViewController
+            while let presented = top.presentedViewController {
+                top = presented
+            }
+            top.present(activityVC, animated: true)
+        }
     }
     
     // MARK: - 核心数据：单行无边框网格
