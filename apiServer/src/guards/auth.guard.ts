@@ -1,6 +1,7 @@
 /**
  * Token 验证 Guard
  * 在 Controller 级别验证用户 Token
+ * 未登录/Token 无效时返回 401，客户端收到后自动登出并 Toast 提示引导重新登录
  */
 import {
   Injectable,
@@ -69,7 +70,7 @@ export class AuthGuard implements CanActivate {
     if (!result.valid) {
       throw new UnauthorizedException({
         code: 401,
-        message: result.error || 'Token 无效',
+        message: result.error || '登录已过期，请重新登录',
         data: null,
       });
     }

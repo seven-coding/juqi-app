@@ -285,8 +285,14 @@ struct HomeView: View {
         print("🏠 [HomeView] loadInitialData 被调用")
         Task {
             print("🏠 [HomeView] 检查是否需要加载 - 当前数量: \(viewModel.currentPosts.count)")
+            let currentEnv = AppConfig.dataEnv
+            let lastEnv = viewModel.lastLoadedDataEnv
             if viewModel.currentPosts.isEmpty {
                 print("📥 [HomeView] 数据为空，开始请求动态列表...")
+                _ = await viewModel.refreshPosts()
+            } else if lastEnv != nil && lastEnv != currentEnv {
+                print("🔄 [HomeView] 数据环境已变更 (\(lastEnv!) → \(currentEnv))，清空列表并重新请求")
+                viewModel.clearListForDataEnvChange()
                 _ = await viewModel.refreshPosts()
             } else {
                 print("✅ [HomeView] 已有数据，数量: \(viewModel.currentPosts.count)")

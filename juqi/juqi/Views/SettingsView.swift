@@ -18,10 +18,6 @@ struct SettingsView: View {
     @State private var showErrorToast = false
     @State private var errorToastMessage = ""
 
-    #if DEBUG
-    @AppStorage("AppConfig.dataEnv") private var dataEnv = "test"
-    #endif
-    
     // 表单字段
     @State private var userName: String = ""
     @State private var signature: String = ""
@@ -186,20 +182,6 @@ struct SettingsView: View {
                             }
                         }
 
-                        #if DEBUG
-                        Section(header: Text("隐藏选项").foregroundColor(secondaryText)) {
-                            Picker("数据环境", selection: $dataEnv) {
-                                Text("测试数据").tag("test")
-                                Text("线上数据").tag("prod")
-                            }
-                            .foregroundColor(.white)
-                            .onChange(of: dataEnv) { _, newValue in
-                                // 切换数据环境时清除 API 响应缓存，确保立即生效
-                                CacheService.shared.clearResponseCache()
-                                print("🔄 [Settings] 数据环境切换为: \(newValue)，已清除 API 缓存")
-                            }
-                        }
-                        #endif
                     }
                     .scrollContentBackground(.hidden)
                     .background(Color.black)

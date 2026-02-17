@@ -8,18 +8,30 @@
 import SwiftUI
 
 struct MessageDetailView: View {
-    let from: String // 发送者ID
-    let type: Int // 消息类型
-    let title: String // 页面标题
+    let from: String
+    let type: Int
+    let title: String
+    /// false = 会话消息列表（只读，每条可点进动态/用户）；true = 保留兼容，当前由 MessageChatView 承担对话页
+    let isChatMode: Bool
     
     @StateObject private var viewModel: MessageCategoryViewModel
     @State private var inputText: String = ""
+    @State private var selectedDynId: String?
+    @State private var selectedUserId: String?
     @Environment(\.dismiss) private var dismiss
     
-    init(from: String, type: Int, title: String) {
+    /// 当 title 为空或为「未知」时展示「会话」，避免导航栏显示未知
+    private var displayTitle: String {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty || t == "未知" { return "会话" }
+        return t
+    }
+
+    init(from: String, type: Int, title: String, isChatMode: Bool = false) {
         self.from = from
         self.type = type
         self.title = title
+        self.isChatMode = isChatMode
         _viewModel = StateObject(wrappedValue: MessageCategoryViewModel(messageType: type, from: from))
     }
     
@@ -29,7 +41,22 @@ struct MessageDetailView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                if viewModel.isEmpty && !viewModel.isLoading {
+                if viewModel.isLoading && viewModel.messages.isEmpty {
+                    VStack(spacing: 12) {
+                        Spacer()
+                        ProgressView()
+                            .tint(Color(hex: "#FF6B35"))
+                            .scaleEffect(1.2)
+                        Text("加载中...")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "#605D5D"))
+                        Spacer()
+                    }
+                } else if viewModel.loadFailed && !viewModel.isLoading {
+                    MessageLoadFailedView(message: viewModel.loadFailedMessage) {
+                        viewModel.loadMessages()
+                    }
+                } else if viewModel.isEmpty && !viewModel.isLoading {
                     EmptyStateView(
                         icon: "tray",
                         title: "暂无消息",
@@ -39,14 +66,21 @@ struct MessageDetailView: View {
                     messageList
                 }
                 
-                // 输入栏
-                inputBar
+                if isChatMode {
+                    inputBar
+                }
             }
         }
-        .navigationTitle(title)
+        .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             viewModel.loadMessages()
+        }
+        .navigationDestination(item: $selectedDynId) { dynId in
+            PostDetailLoaderView(dynId: dynId)
+        }
+        .navigationDestination(item: $selectedUserId) { userId in
+            UserProfileView(userId: userId, userName: "")
         }
     }
     
@@ -54,19 +88,25 @@ struct MessageDetailView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
-                    ChatMessageView(
-                        message: message,
-                        isFromCurrentUser: false // 需要根据实际逻辑判断
-                    )
+                    Group {
+                        if isChatMode {
+                            ChatMessageView(message: message, isFromCurrentUser: false)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                        } else {
+                            SessionMessageRowView(message: message) { dynId, userId in
+                                if let d = dynId { selectedDynId = d }
+                                if let u = userId { selectedUserId = u }
+                            }
+                        }
+                    }
                     .onAppear {
-                        // 加载更多
                         if index == viewModel.messages.count - 1 && !viewModel.allLoaded {
                             viewModel.loadMore()
                         }
                     }
                 }
                 
-                // 加载更多指示器
                 if viewModel.isLoading && !viewModel.messages.isEmpty {
                     HStack {
                         Spacer()
@@ -86,7 +126,6 @@ struct MessageDetailView: View {
     
     private var inputBar: some View {
         HStack(spacing: 12) {
-            // 输入框
             TextField("输入新消息", text: $inputText)
                 .font(.system(size: 15))
                 .foregroundColor(.white)
@@ -95,10 +134,7 @@ struct MessageDetailView: View {
                 .background(Color(hex: "#1B1B1B"))
                 .cornerRadius(20)
             
-            // 附件按钮
-            Button(action: {
-                // 添加附件
-            }) {
+            Button(action: {}) {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 20))
                     .foregroundColor(Color(hex: "#FF6B35"))

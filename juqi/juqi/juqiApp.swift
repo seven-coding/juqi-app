@@ -10,6 +10,7 @@ import SwiftUI
 @main
 struct juqiApp: App {
     @StateObject private var authService = AuthService.shared
+    @StateObject private var toastManager = ToastManager.shared
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var isInitialized = false
     @State private var initializationError: Error?
@@ -37,6 +38,7 @@ struct juqiApp: App {
                     LaunchScreenView()
                 }
             }
+            .toast(isPresented: $toastManager.isPresented, message: toastManager.message, type: toastManager.type)
             .onAppear {
                 // 应用启动时执行初始化
                 if !isInitialized {

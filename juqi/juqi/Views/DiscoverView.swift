@@ -10,6 +10,7 @@ import SwiftUI
 struct DiscoverView: View {
     @State private var items: [CircleItem] = []
     @State private var isLoading = false
+    @State private var isRefreshing = false
     @State private var lastError: APIError?
 
     var body: some View {
@@ -18,9 +19,7 @@ struct DiscoverView: View {
                 .ignoresSafeArea()
 
             if isLoading && items.isEmpty {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "#FF6B35")))
-                    .scaleEffect(1.2)
+                discoverSkeleton
             } else if let error = lastError, items.isEmpty {
                 fullScreenErrorView(error)
             } else if items.isEmpty {
@@ -34,10 +33,29 @@ struct DiscoverView: View {
         .task(loadCircles)
     }
 
+    /// 首屏加载骨架屏：多行发现项占位，与列表布局一致
+    private var discoverSkeleton: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(0..<6, id: \.self) { index in
+                    SkeletonDiscoverRowView()
+                    if index < 5 {
+                        Divider()
+                            .background(Color(hex: "#2F3336"))
+                            .padding(.leading, 16)
+                    }
+                }
+            }
+            .padding(.bottom, 100)
+        }
+        .transition(.opacity)
+    }
+
     /// 列表：左侧正方形封面 + 名称（白）+ 介绍（灰，最多3行），右侧箭头
     private var listContent: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                refreshHeader
                 ForEach(items) { item in
                     NavigationLink(destination: CircleDetailView(circleId: item.id, circleTitle: item.title)) {
                         HStack(alignment: .center, spacing: 12) {
@@ -73,6 +91,29 @@ struct DiscoverView: View {
             }
             .padding(.bottom, 100)
         }
+        .refreshable {
+            isRefreshing = true
+            await loadCircles()
+            isRefreshing = false
+        }
+    }
+
+    /// 下拉刷新时顶部提示（业内通用：列表顶留白 + 转圈 + 文案）
+    private var refreshHeader: some View {
+        ZStack(alignment: .center) {
+            Color(hex: "#000000")
+            HStack(spacing: 10) {
+                ProgressView()
+                    .tint(.white)
+                Text("正在刷新")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
+            }
+            .padding(.vertical, 16)
+        }
+        .frame(height: isRefreshing ? 56 : 0)
+        .clipped()
+        .animation(.easeInOut(duration: 0.25), value: isRefreshing)
     }
 
     /// 电站封面：正方形，有图用图，无图用占位

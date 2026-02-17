@@ -50,21 +50,23 @@ export class UserService {
         return null;
       }
 
-      // 并行查询统计数据
+      // 并行查询统计数据（集合名与云函数 appApiV201/user.js 一致：user_followee、dynFavorite、user_black）
       const [
         followCountResult,
-        fansCountResult,
+        followerCountResult,
         dynCountResult,
-        collectCountResult,
+        collectionCountResult,
+        blockedCountResult,
       ] = await Promise.all([
-        db.collection('follow').where({ openId, status: 1 }).count(),
-        db.collection('follow').where({ followOpenId: openId, status: 1 }).count(),
-        db.collection('dyn').where({ openId, dynStatus: 1 }).count(),
-        db.collection('collect').where({ openId, status: 1 }).count(),
+        db.collection('user_followee').where({ openId, status: 1 }).count(),
+        db.collection('user_followee').where({ followeeId: openId, status: 1 }).count(),
+        db.collection('dyn').where({ openId }).count(),
+        db.collection('dynFavorite').where({ openId, favoriteFlag: '0' }).count(),
+        db.collection('user_black').where({ openId }).count(),
       ]);
 
       // 处理头像 URL
-      let avatar = user.avatar || '';
+      let avatar = user.avatar || user.avatarVisitUrl || user.avatarUrl || '';
       if (avatar && avatar.startsWith('cloud://')) {
         try {
           const result = await this.cloudbaseService.getTempFileURL([avatar], dataEnv);
@@ -76,15 +78,29 @@ export class UserService {
         }
       }
 
-      // 构造返回数据
+      const followCount = followCountResult?.total ?? 0;
+      const followerCount = followerCountResult?.total ?? 0;
+      const publishCount = dynCountResult?.total ?? user.dynNums ?? user.publishCount ?? 0;
+      const collectionCount = collectionCountResult?.total ?? user.collectionCount ?? 0;
+      const inviteCount = toInt(user.inviteCount, 0);
+      const blockedCount = blockedCountResult?.total ?? user.blockedCount ?? 0;
+      const chargeNums = toInt(user.chargeNums ?? user.chargeCount, 0);
+
+      // 返回与 iOS UserProfile 及云函数 GetCurrentUserProfile 一致的字段名
       const profile = transformUserProfile({
         ...user,
         id: user._id || user.openId,
         avatar,
-        followCount: followCountResult.total || 0,
-        fansCount: fansCountResult.total || 0,
-        publishDynCount: dynCountResult.total || 0,
-        collectCount: collectCountResult.total || 0,
+        followCount,
+        followerCount,
+        fansCount: followerCount,
+        publishCount,
+        publishDynCount: publishCount,
+        collectionCount,
+        collectCount: collectionCount,
+        inviteCount,
+        blockedCount,
+        chargeNums,
       });
 
       return profile;

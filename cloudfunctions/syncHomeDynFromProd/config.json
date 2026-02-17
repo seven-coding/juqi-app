@@ -1,8 +1,0 @@
-{
-  "permissions": { "openapi": [] },
-  "triggers": [],
-  "envVariables": {
-    "PROD_ENV_ID": "prod-juqi-7glu2m8qfa31e13f",
-    "TEST_ENV_ID": "test-juqi-3g1m5qa7cc2737a1"
-  }
-}

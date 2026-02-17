@@ -85,16 +85,17 @@ class NetworkService {
         maxRetries: Int? = nil
     ) async throws -> T {
         let startTime = Date()
-        print("📤 [NetworkService] 请求 - operation: \(operation), url: \(baseURL), needsToken: \(needsToken)")
+        print("📤 [API] operation=\(operation) url=\(baseURL) needsToken=\(needsToken)")
         
-        // 以下接口不缓存：避免二级页列表与入口数量/数据环境不一致，或 dataEnv/userId 切换后看到旧数据
+        // 以下接口不缓存：写操作必须打服务端；读操作避免二级页与入口数据不一致
         var effectiveUseCache = useCache
-        let noCacheOperations = [
+        let noCacheOperations: [String] = [
             "appGetCurrentUserProfile",
             "appGetUserList", "appGetBlackList",
             "appGetChargeList", "appGetFavoriteList", "appGetUserDynList",
             "appGetNoVisitList", "appGetNoSeeList", "appGetNoSeeMeList",
-            "appGetUserProfile", "appGetDynComment"
+            "appGetUserProfile", "appGetDynComment",
+            "appChargeDyn", "appFollowUser", "appUnfollowUser", "appGetUserFollowStatus"
         ]
         if noCacheOperations.contains(operation) {
             effectiveUseCache = false
@@ -126,6 +127,7 @@ class NetworkService {
             if token == nil {
                 print("❌ [Token] Token missing, logging out...")
                 await MainActor.run {
+                    ToastManager.shared.error("登录已过期，请重新登录")
                     AuthService.shared.logout()
                 }
                 throw APIError.tokenExpired
@@ -157,18 +159,19 @@ class NetworkService {
                     useCache: effectiveUseCache
                 )
                 let duration = Int((Date().timeIntervalSince(startTime) * 1000))
-                print("✅ [API Success] operation: \(operation), duration: \(duration)ms, attempt: \(attempt + 1)")
+                print("✅ [API] operation=\(operation) duration=\(duration)ms attempt=\(attempt + 1)")
                 return result
             } catch let error as APIError {
                 lastError = error
                 
                 // 如果不需要重试或已达到最大重试次数
                 if !error.isRetryable || attempt >= retryCount {
-                    print("❌ [API Error] operation: \(operation), type: \(error.errorType), error: \(error.localizedDescription), retry: \(attempt)/\(retryCount), isRetryable: \(error.isRetryable)")
+                    print("❌ [API] operation=\(operation) type=\(error.errorType) message=\(error.localizedDescription) retry=\(attempt)/\(retryCount)")
                     // 需要重新登录
                     if error.requiresReauth {
                         print("🔄 [Token] Token expired, logging out...")
                         await MainActor.run {
+                            ToastManager.shared.error("登录已过期，请重新登录")
                             AuthService.shared.logout()
                         }
                     }
@@ -206,33 +209,28 @@ class NetworkService {
         needsToken: Bool,
         useCache: Bool
     ) async throws -> T {
+        let localReqId = String(UUID().uuidString.prefix(8))
         // 使用真实后端API
         guard let url = URL(string: baseURL) else {
-            print("❌ [API Error] Invalid URL: \(baseURL)")
+            print("❌ [API] req=\(localReqId) operation=\(operation) error=Invalid URL")
             throw APIError.invalidURL
         }
         
+        let requestedDataEnv = AppConfig.dataEnv
         var body: [String: Any] = [
             "operation": operation,
             "data": data,
             "source": "v2", // 自动添加source='v2'参数标识App请求
-            "dataEnv": AppConfig.dataEnv // 测试环境下可切换 测试数据/线上数据
+            "dataEnv": requestedDataEnv // 测试环境下可切换 测试数据/线上数据
         ]
         
         if needsToken, let token = token {
             body["token"] = token
         }
         
-        var dataDesc = ""
-        if operation == "getMessagesNew" {
-            let p = data["page"] as? Int
-            let l = data["limit"] as? Int
-            let t = data["type"]
-            let f = data["from"]
-            let a = data["aitType"]
-            dataDesc = ", data: page=\(p.map { "\($0)" } ?? "nil"), limit=\(l.map { "\($0)" } ?? "nil"), type=\(t.map { "\($0)" } ?? "nil"), from=\(f.map { "\($0)" } ?? "nil"), aitType=\(a.map { "\($0)" } ?? "nil")"
-        }
-        print("📤 [HTTP Request] POST \(url.absoluteString), body: operation=\(operation), source=v2, dataEnv=\(AppConfig.dataEnv), hasToken=\(needsToken && token != nil)\(dataDesc)")
+        var dataKeys = Array(data.keys).sorted().joined(separator: ",")
+        if dataKeys.isEmpty { dataKeys = "-" }
+        print("📤 [API] req=\(localReqId) operation=\(operation) dataEnv=\(requestedDataEnv) dataKeys=\(dataKeys)\(dataIdLogSuffix(data))")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -252,15 +250,15 @@ class NetworkService {
             let requestDuration = Int((Date().timeIntervalSince(requestStartTime) * 1000))
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ [HTTP Error] Invalid response type")
+                print("❌ [API] req=\(localReqId) operation=\(operation) error=Invalid response type")
                 throw APIError.invalidResponse
             }
             
-            print("📥 [HTTP Response] status: \(httpResponse.statusCode), duration: \(requestDuration)ms")
+            print("📥 [API] req=\(localReqId) operation=\(operation) status=\(httpResponse.statusCode) duration=\(requestDuration)ms\(dataIdLogSuffix(data))")
             
             // 2xx 但响应体为空时直接报错，便于区分「解码失败」与「网关未返回 body」
             if responseData.isEmpty && (200...299).contains(httpResponse.statusCode) {
-                print("❌ [HTTP Error] 响应体为空 (status: \(httpResponse.statusCode))")
+                print("❌ [API] req=\(localReqId) operation=\(operation) error=响应体为空 status=\(httpResponse.statusCode)\(dataIdLogSuffix(data))")
                 throw APIError.apiError(code: 0, message: "服务器返回空数据，请稍后重试")
             }
             
@@ -269,16 +267,17 @@ class NetworkService {
             case 200...299:
                 break
             case 401:
-                print("❌ [HTTP Error] Unauthorized (401), logging out...")
+                print("❌ [API] req=\(localReqId) operation=\(operation) error=Unauthorized 401\(dataIdLogSuffix(data))")
                 await MainActor.run {
+                    ToastManager.shared.error("登录已过期，请重新登录")
                     AuthService.shared.logout()
                 }
                 throw APIError.tokenExpired
             case 500...599:
-                print("❌ [HTTP Error] Server error: \(httpResponse.statusCode)")
+                print("❌ [API] req=\(localReqId) operation=\(operation) error=Server status=\(httpResponse.statusCode)\(dataIdLogSuffix(data))")
                 throw APIError.serverError(httpResponse.statusCode)
             default:
-                print("❌ [HTTP Error] Unexpected status: \(httpResponse.statusCode)")
+                print("❌ [API] req=\(localReqId) operation=\(operation) error=Unexpected status=\(httpResponse.statusCode)\(dataIdLogSuffix(data))")
                 throw APIError.invalidResponse
             }
             
@@ -338,10 +337,8 @@ class NetworkService {
                    let top = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any] {
                     let code = top["code"] as? Int ?? 500
                     let msg = top["message"] as? String ?? "请求失败"
-                    let dataObj = top["data"] as? [String: Any]
-                    let reason = (dataObj?["reason"] as? String) ?? "unknown"
                     if code != 200 {
-                        print("❌ [API Error] operation: getMessagesNew, type: \(reason), code: \(code), message: \(msg)")
+                        print("❌ [API] req=\(localReqId) operation=getMessagesNew code=\(code) message=\(msg)\(dataIdLogSuffix(data))")
                         if code == 500 && msg.lowercased().contains("timeout") {
                             throw APIError.timeout
                         }
@@ -366,15 +363,16 @@ class NetworkService {
                 if operation == "appLogin" {
                     let raw = String(data: responseData, encoding: .utf8) ?? ""
                     let preview = raw.count > 500 ? String(raw.prefix(500)) + "…" : raw
-                    print("❌ [Decoding] appLogin 原始响应体(前500字符): \(preview)")
+                    print("❌ [API] req=\(localReqId) operation=appLogin decoding 原始响应体(前500字符): \(preview)")
                 }
                 throw decodeError
             }
             
             // 处理API错误码
             if apiResponse.code == 401 {
-                print("❌ [API Error] Token expired (401), logging out...")
+                print("❌ [API] req=\(localReqId) operation=\(operation) code=401 Token expired")
                 await MainActor.run {
+                    ToastManager.shared.error("登录已过期，请重新登录")
                     AuthService.shared.logout()
                 }
                 throw APIError.tokenExpired
@@ -382,7 +380,8 @@ class NetworkService {
             
             if apiResponse.code != 200 {
                 let msg = apiResponse.message ?? "请求失败"
-                print("❌ [API Error] operation: \(operation), type: api_error, code: \(apiResponse.code), message: \(msg)")
+                let sid = apiResponse.requestId ?? "-"
+                print("❌ [API] req=\(localReqId) requestId=\(sid) operation=\(operation) code=\(apiResponse.code) message=\(msg)\(dataIdLogSuffix(data))")
                 
                 // 兼容服务端返回的 request timeout 消息，映射为客户端的 timeout 错误
                 if apiResponse.code == 500 && msg.lowercased().contains("timeout") {
@@ -393,11 +392,20 @@ class NetworkService {
             }
             
             guard let resultData = apiResponse.data else {
-                print("❌ [API Error] Response data is nil")
+                print("❌ [API] req=\(localReqId) operation=\(operation) error=Response data is nil\(dataIdLogSuffix(data))")
                 throw APIError.unknown
             }
             
-            print("✅ [API Response] operation: \(operation), code: \(apiResponse.code), hasData: true")
+            let sid = apiResponse.requestId ?? "-"
+            print("✅ [API] req=\(localReqId) requestId=\(sid) operation=\(operation) code=\(apiResponse.code)\(dataIdLogSuffix(data))")
+            
+            // 若服务端下发 newToken（token 即将过期时），立即保存，避免后续请求因过期被拒
+            if let newToken = apiResponse.newToken, !newToken.isEmpty {
+                await MainActor.run {
+                    AuthService.shared.saveToken(newToken)
+                }
+                print("🔄 [Token] Updated from response newToken")
+            }
             
             // 缓存响应
             if useCache {
@@ -431,14 +439,14 @@ class NetworkService {
             throw apiError
         } catch let error as DecodingError {
             let apiError = APIError.decodingError(error)
-            print("❌ [Decoding Error] operation: \(operation), type: decoding, error: \(error.localizedDescription)")
+            print("❌ [API] req=\(localReqId) operation=\(operation) type=decoding error=\(error.localizedDescription)\(dataIdLogSuffix(data))")
             CrashReporter.shared.logError(apiError, context: [
                 "operation": operation,
                 "data": data
             ])
             throw apiError
         } catch let error as APIError {
-            print("❌ [API Error] operation: \(operation), type: \(error.errorType), error: \(error.localizedDescription)")
+            print("❌ [API] req=\(localReqId) operation=\(operation) type=\(error.errorType) error=\(error.localizedDescription)\(dataIdLogSuffix(data))")
             CrashReporter.shared.logError(error, context: [
                 "operation": operation,
                 "data": data
@@ -450,7 +458,7 @@ class NetworkService {
                 throw error
             }
             let apiError = APIError.networkError(error)
-            print("❌ [Unknown Error] operation: \(operation), error: \(error.localizedDescription)")
+            print("❌ [API] req=\(localReqId) operation=\(operation) error=\(error.localizedDescription)\(dataIdLogSuffix(data))")
             CrashReporter.shared.logError(apiError, context: [
                 "operation": operation,
                 "data": data
@@ -460,6 +468,21 @@ class NetworkService {
     }
     
     // MARK: - 辅助方法
+
+    /// 从请求 data 中提取与服务端一致的 id（动态）、userId（用户），用于日志便于排查
+    private func dataIdLogSuffix(_ data: [String: Any]) -> String {
+        var parts: [String] = []
+        if let v = data["id"] {
+            let s = (v as? String) ?? String(describing: v)
+            if !s.isEmpty { parts.append("id=\(s)") }
+        }
+        if let v = data["userId"] {
+            let s = (v as? String) ?? String(describing: v)
+            if !s.isEmpty { parts.append("userId=\(s)") }
+        }
+        if parts.isEmpty { return "" }
+        return " " + parts.joined(separator: " ")
+    }
 
     /// 当 appGetCircleDetail 标准解码失败时，尝试将 data 视为圈子对象直接解码（部分电站返回格式不同）
     private static func decodeCircleDetailFallback(from responseData: Data, decoder: JSONDecoder) -> CircleDetailResponse? {
@@ -507,4 +530,8 @@ struct APIResponse<T: Codable>: Codable {
     let code: Int
     let data: T?
     let message: String?
+    /// 服务端返回的请求 ID，便于与云端日志对应（可选，兼容未返回的版本）
+    let requestId: String?
+    /// 服务端在 token 即将过期（7 天内）时下发的刷新 token，客户端需保存以延长有效使用期
+    let newToken: String?
 }

@@ -2,8 +2,8 @@
 
 # 今日 AI 请求
 
-生成时间：2026/2/10 15:59:50
-统计范围：2026/02/10 00:00:00 — 2026/02/10 15:59:50（本地时间）
+生成时间：2026/2/11 02:47:08
+统计范围：2026/02/11 00:00:00 — 2026/02/11 02:47:08（本地时间）
 
 说明：本报告输出**当日全部**可用请求（来自 aiService.generations + aiService.prompts 去重合并）。Cursor 本地 generations 仅保留最近约 50 条，合并 prompts 后可能略多。
 
@@ -11,324 +11,476 @@
 
 | 请求数 | 输入文字数（排除日志） | 对比昨天 |
 |--------|------------------------|----------|
-| 50 | 5777 字 | 较昨日 请求 +50 条，输入 +5777 字 |
+| 32 | 11454 字 | 较昨日 请求 +14 条，输入 +4071 字 |
 
 ---
 
-## 1. 2026/02/10 15:59:38
+## 1. 2026/02/11 02:44:47
 
 ```
 复盘
 ```
 
-## 2. 2026/02/10 15:55:59
+## 2. 2026/02/11 02:17:32
 
 ```
-「删掉 daily-development-review 文件夹」
+帮我部署
 ```
 
-## 3. 2026/02/10 15:55:12
+## 3. 2026/02/11 02:14:21
 
 ```
-删除技能/Users/tongyao/Desktop/Code/JUQI/.cursor/skills/daily-development-review
+实际列表还是没有显示出来个人简介 和会员标识，进行排查
 ```
 
-## 4. 2026/02/10 15:47:03
+## 4. 2026/02/11 02:12:58
 
 ```
-结下我的需求 我希望每天工作完毕后有比较好的复盘、沉淀。帮我稳定心态，稳定推进项目，在干中学，获得成长 我期望的流程 1、输入复盘 2、每日ai请求：跑脚本拉取今天所有的ai对话，并更新至文档中 3、版本与进度：基于今天代码进度进行更新，并更新至文档中 4、日复盘：基于2、3和git代码情况，进行最终复盘，并更新至文档中
-
-你要的不是「复盘文本」，而是一个稳定你状态的工程化闭环：
-
-每天工作结束 → 有被看见、有被总结、有被推进感 → 第二天知道先干什么
-
-核心目标有四个：
-
-情绪层：
-
-防止“今天干很多但感觉一团糟”
-
-帮你稳定心态，不内耗
-
-——————
-需要创建用 3 个 skill + 1 个总控 skill 完成这套流程的管理
-
-Skill 1：AI 对话沉淀器（事实型）
-
-职责非常单一：记录，不评价
-
-作用
-
-拉取「今天所有 AI 对话」
-
-做最轻度的结构化（按主题 / 项目）
-
-写入文档
-
-Skill 2：版本与进度更新器（工程型）
-
-职责：对齐“项目状态”
-
-输入
-
-今日 git 状态
-
-今日变更文件
-
-当前《版本与进度》文档
-
-输出
-
-更新：
-
-已完成项
-
-进行中项
-
-新暴露问题
-
-明确：
-
-哪些 P0 已收口
-
-哪些还悬着
-
-👉 这是你的 项目控制台
-
-✅ Skill 3：日复盘生成器（教练型）
-
-这是你最重视的部分
-
-只做三件事：
-
-告诉你：今天推进了什么（具体）
-
-告诉你：哪些地方做得对，值得保持
-
-告诉你：下一步最小推进点是什么
-
-输入
-
-Skill 1 的输出
-
-Skill 2 的输出
-
-今日 git 状态
-
-输出
-
-情绪稳定
-
-决策清晰
-
-下一步明确
-
-👉 这是你的 心理稳定器 + 成长放大器
-
-总控 Skill：按顺序调用 1 → 2 → 3
-
-认知层：
-
-把“今天我在干中学到的东西”变成可积累的知识
-
-减少重复踩坑
-
-工程层：
-
-让代码、进度、决策 被记录、被对齐
-
-避免项目失控或“只有我脑子里有全貌”
-
-AI 使用层：
-
-AI 不只是聊天，而是参与项目记忆与推进
-
-避免泛化、空洞、每天从零开始
-
-👉 这是一个长期运行系统，不是一次性 prompt。
+已经连上了mcp，你看看呢
 ```
 
-## 5. 2026/02/10 13:43:57
+## 5. 2026/02/11 02:11:30
 
 ```
-基于 今日ai请求，修改今日复盘
+查看测试环境云函数日志，消息相关
 ```
 
-## 6. 2026/02/10 13:24:31
+## 6. 2026/02/11 02:07:33
 
 ```
-现在只有50条，改为生成当天全部。
+刚刚我请求了，用mcp查看服务端日志定位问题。
 ```
 
-## 7. 2026/02/10 13:22:24
+## 7. 2026/02/11 01:48:01
 
 ```
-1、修改脚本
-2、脚本放在文档顶部
+直接开始处理2、3
 ```
 
-## 8. 2026/02/10 13:20:02
+## 8. 2026/02/11 01:44:56
 
 ```
-1、修改脚本
-2、脚本放在文档顶部
+@/Users/tongyao/.cursor/plans/消息模块架构分析与优化_849a6f5a.plan.md  现在还遗留什么事项没有
 ```
 
-## 9. 2026/02/10 13:19:06
+## 9. 2026/02/11 01:40:52
 
 ```
-删除 昨日ai 请求，每周AI请求，只保留今日ai请求文档
+用mcp分别查一下生产 和测试环境
+1、有没有建索引
+2、是不是最新的云函数
+3、超时是否修改
 ```
 
-## 10. 2026/02/10 13:16:50
+## 10. 2026/02/11 01:37:33
 
 ```
-改为：
-请求数、输入文字数（计算获得，排除日志）、对比昨天。
-```
-
-## 11. 2026/02/10 13:15:17
-
-```
-我需要在文档加个表格，目的是全局统计
-————
-请求数
-消耗token
-对比昨天
-```
-
-## 12. 2026/02/10 13:12:37
-
-```
-文档按时间倒序显示 ，最前面的是最新的
-```
-
-## 13. 2026/02/10 13:10:22
-
-```
-每周ai请求，读取从2.9 的记录
-```
-
-## 14. 2026/02/10 12:55:29
-
-```
-帮我写个脚本，然后把昨日的 请求 放在一个文档中，我进行查看
-```
-
-## 15. 2026/02/10 12:50:33
-
-```
-cursor是有存对话记录的，你有没有办法通过工程化的方式读取，然后分析
-```
-
-## 16. 2026/02/10 12:48:54
-
-```
-你能读取到我今日和AI的对话吗？我感觉复盘和建议，都比较虚和空洞
-```
-
-## 17. 2026/02/10 12:46:08
-
-```
-今日可优化 改为 AI编程复盘
-
-然后按照你建议的维度重新给我生成昨日总结
-```
-
-## 18. 2026/02/10 12:40:04
-
-```
-我的目标是提升我使用AI进行编程的能力和效率，避免泛化，空洞。 在今日可优化维度，你建议还增加哪些 维度 或角色？
-```
-
-## 19. 2026/02/10 12:31:51
-
-```
-1、今日总结 维持 @JUQI-APP/docs/日复盘.md  的今日总结说话方式。但增加最多1段话的约束，避免信息过碎
-
-2、取消建议
-
-3、今日可优化，增加 产品总监 和AI编程专家 2重角色视角条目，给出客观的工作建议，避免泛化，空洞。目标是提升我使用AI进行编程的能力和效率
-
-4、总代码量我给你权限
-
-5、预估工时，需要按角色（服务端/客户端/运维/+事项，增加一列：代码行数
-```
-
-## 20. 2026/02/10 12:21:03
-
-```
-1、日复盘我希望 除了鼓励，还有一些对我的建议。
-
-2、取消今日得分，改为今日可优化。然后按同样维度给我优化的建议
-
-3、代码变更，只需要告诉我当前总代码数量xx，今日新增xx数量，修改xx， 占比xx
-只要数据统计，不要细节
-
-4、今日未完成 参考 昨天的 【明日工作建议】条目 勾选
-
-5、明日工作建议 ，通过未完成+引用【版本与进度】文档 挑选任务项
-
-————
-从新给我一版本呢
-
-5、
-```
-
-## 21. 2026/02/10 12:12:01
-
-```
-1、话题和电站的帖子列表 加载中显示骨架屏样式
-```
-
-## 22. 2026/02/10 12:09:12
-
-```
-Protocol not available]
-📥 [HTTP Response] status: 201, duration: 1424ms
+日志如下，确认问题是什么
+📊 [数据源] 当前数据源: 云托管API(Cloud Run) + 线上数据
+╔═══════════════════════════════════════════════════════════════╗
+║                  🚀 App 环境配置信息                         ║
+╠═══════════════════════════════════════════════════════════════╣
+║  环境模式:     测试环境 (DEBUG)                                    ║
+║  当前数据源:   云托管API(Cloud Run) + 线上数据                       ║
+║  API基础URL:   https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2                                     ║
+║  API完整路径:  https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api                                      ║
+║  WebSocket:    wss://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/ws                                       ║
+║  日志启用:     是                                   ║
+║  请求超时:     30秒                      ║
+║  最大重试:     3次                                ║
+╚═══════════════════════════════════════════════════════════════╝
+🧪 测试环境：已清除认证状态，将显示登录页
+AX Safe category class 'SLHighlightDisambiguationPillViewAccessibility' was not found!
+🧪 [测试登录] 点击测试登录，API: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api
+📤 [NetworkService] 请求 - operation: appLogin, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: false
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appLogin, source=v2, dataEnv=prod, hasToken=false
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 2140ms
+✅ [API Response] operation: appLogin, code: 200, hasData: true
+✅ [API Success] operation: appLogin, duration: 2153ms, attempt: 1
+🧪 测试登录成功（真实 token）
+🔐 [登录] 用户 openId: onosB5lRKgCjonoNbj9peqM--e2Q
+📤 [Messages] 首屏 请求 page=1, limit=20, skipNotReadCount=true
+🏠 [HomeView] onAppear - 当前动态数量: 0, 是否加载中: false
+🏠 [HomeView] loadInitialData 被调用
+📤 [NetworkService] 请求 - operation: getMessagesNew, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
+✅ [Token] Token present, hasToken: true
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+🏠 [HomeView] 检查是否需要加载 - 当前数量: 0
+📥 [HomeView] 数据为空，开始请求动态列表...
+🔄 [HomeViewModel] 开始加载动态列表 - 分类: all, 刷新
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📤 [NetworkService] 请求 - operation: appGetDynList, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
+✅ [Token] Token present, hasToken: true
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appGetDynList, source=v2, dataEnv=prod, hasToken=true
+nw_socket_set_connection_idle [C2.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 6483ms
+nw_socket_set_connection_idle [C2.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+✅ [API Response] operation: appGetDynList, code: 200, hasData: true
+✅ [API Success] operation: appGetDynList, duration: 6506ms, attempt: 1
+✅ 动态列表加载成功 - 数量: 18, 是否有更多: false
+nw_socket_set_connection_idle [C3.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11480ms
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489d0ce0_91e-19c489d0d2a_3, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489d0ce0_91e-19c489d0d2a_3, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+🔄 [Retry] operation: getMessagesNew, attempt: 1/3, delay: 1.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489d0ce0_91e-19c489d0d2a_3, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_handle_socket_event [C7.1.2:3] Socket SO_ERROR [54: Connection reset by peer]
+nw_protocol_socket_set_no_wake_from_sleep [C7.1.2:3] setsockopt SO_NOWAKEFROMSLEEP failed [22: Invalid argument]
+nw_protocol_socket_set_no_wake_from_sleep setsockopt SO_NOWAKEFROMSLEEP failed [22: Invalid argument]
+nw_protocol_socket_reset_linger [C7.1.2:3] setsockopt SO_LINGER failed [22: Invalid argument]
+nw_endpoint_flow_failed_with_error [C7.1.2 117.135.206.172:443 in_progress socket-flow (satisfied (Path is satisfied), interface: utun6)] already failing, returning
+nw_endpoint_flow_failed_with_error [C7.1.2 117.135.206.172:443 cancelled socket-flow ((null))] already failing, returning
+nw_socket_handle_socket_event [C8.1.2:3] Socket SO_ERROR [54: Connection reset by peer]
+nw_protocol_socket_set_no_wake_from_sleep [C8.1.2:3] setsockopt SO_NOWAKEFROMSLEEP failed [22: Invalid argument]
+nw_protocol_socket_set_no_wake_from_sleep setsockopt SO_NOWAKEFROMSLEEP failed [22: Invalid argument]
+nw_socket_handle_socket_event [C9.1.2:3] Socket SO_ERROR [54: Connection reset by peer]
+nw_protocol_socket_set_no_wake_from_sleep [C9.1.2:3] setsockopt SO_NOWAKEFROMSLEEP failed [22: Invalid argument]
+nw_protocol_socket_set_no_wake_from_sleep setsockopt SO_NOWAKEFROMSLEEP failed [22: Invalid argument]
+Connection 7: received failure notification
+Connection 7: received ECONNRESET with incomplete TLS handshake - generating errSSLClosedNoNotify
+Connection 7: failed to connect 3:-9816, reason -1
+Connection 7: encountered error(3:-9816)
+nw_protocol_socket_reset_linger [C8.1.2:3] setsockopt SO_LINGER failed [22: Invalid argument]
+nw_endpoint_flow_failed_with_error [C8.1.2 117.135.206.172:443 in_progress socket-flow (satisfied (Path is satisfied), interface: utun6)] already failing, returning
+nw_endpoint_flow_failed_with_error [C8.1.2 117.135.206.172:443 cancelled socket-flow ((null))] already failing, returning
+nw_protocol_socket_reset_linger [C9.1.2:3] setsockopt SO_LINGER failed [22: Invalid argument]
+nw_endpoint_flow_failed_with_error [C9.1.2 117.135.206.172:443 in_progress socket-flow (satisfied (Path is satisfied), interface: utun6)] already failing, returning
+nw_endpoint_flow_failed_with_error [C9.1.2 117.135.206.172:443 cancelled socket-flow ((null))] already failing, returning
+Connection 8: received failure notification
+Connection 8: received ECONNRESET with incomplete TLS handshake - generating errSSLClosedNoNotify
+Connection 8: failed to connect 3:-9816, reason -1
+Connection 8: encountered error(3:-9816)
+Task <A61C4F3C-F548-4D84-AD74-2DE46F00B4A3>.<10> HTTP load failed, 0/0 bytes (error code: -1200 [3:-9816])
+Connection 9: received failure notification
+Connection 9: received ECONNRESET with incomplete TLS handshake - generating errSSLClosedNoNotify
+Connection 9: failed to connect 3:-9816, reason -1
+Connection 9: encountered error(3:-9816)
+Task <A61C4F3C-F548-4D84-AD74-2DE46F00B4A3>.<10> finished with error [-1200] Error Domain=NSURLErrorDomain Code=-1200 "A TLS error caused the secure connection to fail." UserInfo={_kCFStreamErrorCodeKey=-9816, NSUnderlyingError=0x600000c15d40 {Error Domain=kCFErrorDomainCFNetwork Code=-1200 "(null)" UserInfo={_kCFStreamPropertySSLClientCertificateState=0, _kCFNetworkCFStreamSSLErrorOriginalValue=-9816, _kCFStreamErrorDomainKey=3, _kCFStreamErrorCodeKey=-9816, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface: utun6}}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <A61C4F3C-F548-4D84-AD74-2DE46F00B4A3>.<10>, _NSURLErrorRelatedURLSessionTaskErrorKey=(
+    "LocalDataTask <A61C4F3C-F548-4D84-AD74-2DE46F00B4A3>.<10>"
+), NSLocalizedDescription=A TLS error caused the secure connection to fail., NSErrorFailingURLStringKey=https://cdn.juqi.life/juqi/dyns/2a06765e-a94c-4e9c-baa6-e4741d83aab1.jpg, NSErrorFailingURLKey=https://cdn.juqi.life/juqi/dyns/2a06765e-a94c-4e9c-baa6-e4741d83aab1.jpg, _kCFStreamErrorDomainKey=3}
+nw_socket_set_connection_idle [C6.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C6.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C4.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C4.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C10.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C10.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C11.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C11.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C3.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11520ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489d3ec6_920-19c489d3f0e_3, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489d3ec6_920-19c489d3f0e_3, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+🔄 [Retry] operation: getMessagesNew, attempt: 2/3, delay: 2.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489d3ec6_920-19c489d3f0e_3, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 12029ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489d72bd_921-19c489d72e6_4, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489d72bd_921-19c489d72e6_4, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+🔄 [Retry] operation: getMessagesNew, attempt: 3/3, delay: 4.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489d72bd_921-19c489d72e6_4, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11255ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489db148_922-19c489db191_5, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489db148_922-19c489db191_5, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489db148_922-19c489db191_5, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED, retry: 3/3, isRetryable: true
+❌ [Messages] 首屏 失败 type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489db148_922-19c489db191_5, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [Messages] 首屏 请求 page=1, limit=20, skipNotReadCount=true
+📤 [MessageView] onAppear 消息 tab 展示，触发 loadMessages
+📤 [Messages] 首屏 loadMessages 跳过 guard: isLoading=true, allLoaded=false
+📤 [NetworkService] 请求 - operation: getMessagesNew, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
+✅ [Token] Token present, hasToken: true
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
 nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-❌ [Decoding Error] operation: appGetTopicDynList, error: The data couldn’t be read because it isn’t in the correct format.
-❌ [API Error] operation: appGetTopicDynList, error: 数据解析失败, retry: 0/3, isRetryable: false
+📥 [HTTP Response] status: 201, duration: 11425ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489e5f2f_923-19c489e5f87_4, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489e5f2f_923-19c489e5f87_4, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+🔄 [Retry] operation: getMessagesNew, attempt: 1/3, delay: 1.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489e5f2f_923-19c489e5f87_4, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11279ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489e8f2d_924-19c489e8f7c_5, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489e8f2d_924-19c489e8f7c_5, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+🔄 [Retry] operation: getMessagesNew, attempt: 2/3, delay: 2.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489e8f2d_924-19c489e8f7c_5, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11394ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489ec31d_925-19c489ec374_6, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489ec31d_925-19c489ec374_6, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+🔄 [Retry] operation: getMessagesNew, attempt: 3/3, delay: 4.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489ec31d_925-19c489ec374_6, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11302ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489eff5a_926-19c489effa1_7, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489eff5a_926-19c489effa1_7, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489eff5a_926-19c489effa1_7, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED, retry: 3/3, isRetryable: true
+❌ [Messages] 首屏 失败 type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489eff5a_926-19c489effa1_7, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [Messages] 分类 请求 type=3, page=1, limit=20, from=nil, aitType=nil
+📤 [NetworkService] 请求 - operation: getMessagesNew, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
+✅ [Token] Token present, hasToken: true
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=3, from=nil, aitType=nil
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11331ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489f3ca4_927-19c489f3cec_8, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489f3ca4_927-19c489f3cec_8, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+🔄 [Retry] operation: getMessagesNew, attempt: 1/3, delay: 1.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489f3ca4_927-19c489f3cec_8, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=3, from=nil, aitType=nil
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 12071ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489f6cf4_928-19c489f6d3f_9, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489f6cf4_928-19c489f6d3f_9, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+🔄 [Retry] operation: getMessagesNew, attempt: 2/3, delay: 2.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489f6cf4_928-19c489f6d3f_9, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=3, from=nil, aitType=nil
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11311ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489fa3d2_929-19c489fa41f_a, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489fa3d2_929-19c489fa41f_a, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+🔄 [Retry] operation: getMessagesNew, attempt: 3/3, delay: 4.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489fa3d2_929-19c489fa41f_a, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=3, from=nil, aitType=nil
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11269ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c489fdfac_92a-19c489fdff0_b, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489fdfac_92a-19c489fdff0_b, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C12.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c489fdfac_92a-19c489fdff0_b, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED, retry: 3/3, isRetryable: true
+❌ [Messages] 分类 type=3 失败: apiError(code: 500, message: "callFunction:fail -501001 resource system error. requestID 19c489fdfac_92a-19c489fdff0_b, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED")
+nw_protocol_socket_set_no_wake_from_sleep [C3.1.1.1:3] setsockopt SO_NOWAKEFROMSLEEP failed [22: Invalid argument]
+nw_protocol_socket_set_no_wake_from_sleep setsockopt SO_NOWAKEFROMSLEEP failed [22: Invalid argument]
+📤 [MessageView] onAppear 消息 tab 展示，触发 loadMessages
+📤 [Messages] 首屏 请求 page=1, limit=20, skipNotReadCount=true
+📤 [NetworkService] 请求 - operation: getMessagesNew, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
+✅ [Token] Token present, hasToken: true
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+📤 [Messages] 分类 请求 type=4, page=1, limit=20, from=nil, aitType=nil
+📤 [NetworkService] 请求 - operation: getMessagesNew, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
+✅ [Token] Token present, hasToken: true
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=4, from=nil, aitType=nil
+nw_socket_set_connection_idle [C13.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 12272ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c48a09076_92b-19c48a090d8_c, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c48a09076_92b-19c48a090d8_c, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C13.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+🔄 [Retry] operation: getMessagesNew, attempt: 1/3, delay: 1.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c48a09076_92b-19c48a090d8_c, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+nw_socket_set_connection_idle [C13.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C13.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C14.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 15043ms
+❌ [API Error] operation: getMessagesNew, type: request_failed, code: 500, message: callFunction:fail -501001 resource system error. requestID 19c48a0a008_92c-19c48a0a8fb_1, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+❌ [API Error] operation: getMessagesNew, type: api_error, error: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c48a0a008_92c-19c48a0a8fb_1, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+nw_socket_set_connection_idle [C14.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+🔄 [Retry] operation: getMessagesNew, attempt: 1/3, delay: 1.0s, reason: 服务异常(500): callFunction:fail -501001 resource system error. requestID 19c48a0a008_92c-19c48a0a8fb_1, Invoking task timed out after 10 seconds 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/FUNCTIONS_TIME_LIMIT_EXCEEDED
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=4, from=nil, aitType=nil
+nw_socket_set_connection_idle [C14.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C14.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
 ```
 
-## 23. 2026/02/10 12:06:53
+## 11. 2026/02/11 01:21:41
 
 ```
-更新日复盘的skill，复盘时同步对 @JUQI-APP/docs/版本与进度.md  进行更新。并在复盘中程序说明更新项
+给我终端部署代码，我手动部署
 ```
 
-## 24. 2026/02/10 12:02:37
+## 12. 2026/02/11 01:20:38
 
 ```
-1、完成状态放在第一个字段
-2、已完成只需要 ✅，不要有文字
-3、去掉遗留问题
+腾讯云mcp现在连的哪个环境
 ```
 
-## 25. 2026/02/10 11:48:48
+## 13. 2026/02/11 01:12:02
 
 ```
-我从上一页点击进去后，名称等基础信息客户端应该有，可以先显示，然后再从服务端拿？
+日志把超时等错误类型，可以直接打印出来吗
 ```
 
-## 26. 2026/02/10 11:47:18
+## 14. 2026/02/11 01:07:17
 
 ```
-你写的还没有前面和我聊天时清晰。我需要功能清单，以及完成状态、遗留问题。 参考：
+消息功能bug修复
+————
 
-JUQI App 第一版（MVP）功能清单
-一、MVP 原则
-目标：用户能完成「登录 → 看动态 → 看帖子详情与评论 → 发动态 → 看个人/他人主页 → 收消息」的主闭环。
-范围：只做上述闭环必需功能，与小程序对齐但不做全量对齐；商城、游戏、AI、管理后台、复杂活动等明确不做。
-二、必做功能（第一版必须包含）
-1. 账号与登录
-功能	说明	对应接口
-微信登录	使用微信 OpenSDK 完成登录、拿到 Token	appLogin
-获取/刷新用户信息	登录后拉取用户信息与会员状态	appGetUserInfo、appRefreshToken
-登录态与 Token 管理	Token 存储、过期刷新、未登录跳转登录	-
+
+📊 [数据源] 当前数据源: 云托管API(Cloud Run) + 线上数据
+╔═══════════════════════════════════════════════════════════════╗
+║                  🚀 App 环境配置信息                         ║
+╠═══════════════════════════════════════════════════════════════╣
+║  环境模式:     测试环境 (DEBUG)                                    ║
+║  当前数据源:   云托管API(Cloud Run) + 线上数据                       ║
+║  API基础URL:   https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2                                     ║
+║  API完整路径:  https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api                                      ║
+║  WebSocket:    wss://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/ws                                       ║
+║  日志启用:     是                                   ║
+║  请求超时:     30秒                      ║
+║  最大重试:     3次                                ║
+╚═══════════════════════════════════════════════════════════════╝
+🧪 测试环境：已清除认证状态，将显示登录页
+AX Safe category class 'SLHighlightDisambiguationPillViewAccessibility' was not found!
+🧪 [测试登录] 点击测试登录，API: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api
+📤 [NetworkService] 请求 - operation: appLogin, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: false
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appLogin, source=v2, dataEnv=prod, hasToken=false
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 984ms
+✅ [API Response] operation: appLogin, code: 200, hasData: true
+✅ [API Success] operation: appLogin, duration: 999ms, attempt: 1
+🧪 测试登录成功（真实 token）
+🔐 [登录] 用户 openId: onosB5lRKgCjonoNbj9peqM--e2Q
+📤 [Messages] 首屏 请求 page=1, limit=20, skipNotReadCount=true
+🏠 [HomeView] loadInitialData 被调用
+🏠 [HomeView] onAppear - 当前动态数量: 0, 是否加载中: false
+📤 [NetworkService] 请求 - operation: getMessagesNew, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
+✅ [Token] Token present, hasToken: true
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+🏠 [HomeView] 检查是否需要加载 - 当前数量: 0
+📥 [HomeView] 数据为空，开始请求动态列表...
+🔄 [HomeViewModel] 开始加载动态列表 - 分类: all, 刷新
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📤 [NetworkService] 请求 - operation: appGetDynList, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
+✅ [Token] Token present, hasToken: true
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appGetDynList, source=v2, dataEnv=prod, hasToken=true
+nw_socket_set_connection_idle [C2.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 3073ms
+nw_socket_set_connection_idle [C2.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+✅ [API Response] operation: appGetDynList, code: 200, hasData: true
+✅ [API Success] operation: appGetDynList, duration: 3095ms, attempt: 1
+✅ 动态列表加载成功 - 数量: 18, 是否有更多: false
+nw_socket_set_connection_idle [C3.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C3.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C4.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C4.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C7.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C7.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C10.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C10.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C6.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C6.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C5.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11276ms
+❌ [Decoding Error] operation: getMessagesNew, error: The data couldn’t be read because it is missing.
+nw_socket_set_connection_idle [C7.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C7.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+❌ [API Error] operation: getMessagesNew, error: 数据解析失败, retry: 0/3, isRetryable: false
+❌ [Messages] 首屏 失败: decodingError(Swift.DecodingError.keyNotFound(CodingKeys(stringValue: "messages", intValue: nil), Swift.DecodingError.Context(codingPath: [CodingKeys(stringValue: "data", intValue: nil)], debugDescription: "No value associated with key CodingKeys(stringValue: \"messages\", intValue: nil) (\"messages\").", underlyingError: nil)))
+📤 [Messages] 首屏 请求 page=1, limit=20, skipNotReadCount=true
+📤 [MessageView] onAppear 消息 tab 展示，触发 loadMessages
+📤 [Messages] 首屏 loadMessages 跳过 guard: isLoading=true, allLoaded=false
+📤 [NetworkService] 请求 - operation: getMessagesNew, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
+✅ [Token] Token present, hasToken: true
+📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=getMessagesNew, source=v2, dataEnv=prod, hasToken=true, data: page=1, limit=20, type=nil, from=nil, aitType=nil
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+📥 [HTTP Response] status: 201, duration: 11271ms
+❌ [Decoding Error] operation: getMessagesNew, error: The data couldn’t be read because it is missing.
+nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
+❌ [API Error] operation: getMessagesNew, error: 数据解析失败, retry: 0/3, isRetryable: false
+❌ [Messages] 首屏 失败: decodingError(Swift.DecodingError.keyNotFound(CodingKeys(stringValue: "messages", intValue: nil), Swift.DecodingError.Context(codingPath: [CodingKeys(stringValue: "data", intValue: nil)], debugDescription: "No value associated with key CodingKeys(stringValue: \"messages\", intValue: nil) (\"messages\").", underlyingError: nil)))
 ```
 
-## 27. 2026/02/10 11:43:22
+## 15. 2026/02/11 01:02:34
+
+```
+帮我修改mcp到测试环境
+```
+
+## 16. 2026/02/11 01:01:42
+
+```
+没有出来选环境网页，切换失败
+```
+
+## 17. 2026/02/11 01:01:06
+
+```
+切换环境
+```
+
+## 18. 2026/02/11 01:00:39
+
+```
+切换至测试环境
+```
+
+## 19. 2026/02/11 00:57:10
+
+```
+重新登录
+```
+
+## 20. 2026/02/11 00:56:12
+
+```
+让我切换环境
+```
+
+## 21. 2026/02/11 00:54:27
+
+```
+确认你现在部署的云函数，是测试环境的
+```
+
+## 22. 2026/02/11 00:49:52
+
+```
+用mcp直接部署，和在生产库按 为 messagesType 创建复合索引
+```
+
+## 23. 2026/02/11 00:38:19
 
 ```
 Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
@@ -336,261 +488,58 @@ Implement the plan as specified, it is attached for your reference. Do NOT edit 
 To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
 ```
 
-## 28. 2026/02/10 11:40:42
+## 24. 2026/02/11 00:35:59
 
 ```
-你是一个优秀的产品经理，基于当前需求背景和完成情况，创建【版本与进度】文档
+）治本：messagesType 建复合索引 (to, status, createTime)；getMessagesUser 去掉重复 circle lookup、或先分页取 id 再按 id 批量查详情，减少单次聚合体积；3）首屏与 notReadCount 拆接口（见下）。
+————
+这个对线上小程序的影响是什么
 ```
 
-## 29. 2026/02/10 11:36:42
+## 25. 2026/02/11 00:30:53
 
 ```
-电站、话题页加载中 交互还可以如何优化，给出建议
+作为一名资深的架构师，分析消息相关的所有需求，和功能。按照业内优秀实践，查看现有架构可优化的点
 ```
 
-## 30. 2026/02/10 11:34:02
+## 26. 2026/02/11 00:27:18
 
 ```
-我希望把版本规划需求规划 和每日复盘结合起来，这样可以更好好的了解进度，和明日待办，聚焦快速的推进。如何做更好
+基于这个差异，为什么app查不出来数据
 ```
 
-## 31. 2026/02/10 11:26:22
+## 27. 2026/02/11 00:23:59
 
 ```
-消息页也做同样处理
+不要推测。实际对比 小程序和app在消息的处理差异
 ```
 
-## 32. 2026/02/10 11:24:16
+## 28. 2026/02/11 00:22:11
 
 ```
-电站、话题页加载中 采用骨架屏形式，提升体验
+小程序也是查的生产库，你的结论有问题
 ```
 
-## 33. 2026/02/10 02:50:00
+## 29. 2026/02/11 00:19:39
 
 ```
-先不改skill，按今天的内容先给我个复盘，符合我预期后再改skill
+为什么小程序可以顺利查到，app不行。差异是什么
 ```
 
-## 34. 2026/02/10 02:44:11
+## 30. 2026/02/11 00:15:49
 
 ```
-这个复盘我不满意，觉得要如何优化
+我刚又触发了，再查下app的调用日志
 ```
 
-## 35. 2026/02/10 02:44:00
+## 31. 2026/02/11 00:12:26
 
 ```
-这个复盘我不满意，觉得要如何优化
+你能直接在云开发控制台看吗
 ```
 
-## 36. 2026/02/10 02:39:08
+## 32. 2026/02/11 00:11:59
 
 ```
-创建今日总结
-```
-
-## 37. 2026/02/10 02:34:35
-
-```
-每个项目 单独 有一个复盘文件 确认下这里的理解是否一致
-```
-
-## 38. 2026/02/10 02:32:48
-
-```
-把下面的细节也加入skills里
-每个项目都有一个固定的复盘文件，新增的复盘直接在文件上增加。且新的内容在最上面，便于阅读。
-```
-
-## 39. 2026/02/10 02:27:41
-
-```
-创建【今日复盘】skills
-目标：对每天改动和新增的内容做总结，并以‘高绩效教练“思维对我表达，产生积极情绪
-
-大概结构
-You are a senior engineering manager.
-
-Based on today's git changes, generate a DAILY DEVELOPMENT REVIEW REPORT.
-
-INPUT YOU CAN USE:
-- git status
-- git diff --stat
-- file list and change scale
-- inferred feature intent from file names and code patterns
-
-OUTPUT FORMAT (STRICTLY FOLLOW):
-
-# 📊 日复盘总结
-# 报告生成时间：{{TODAY_DATE}}
-
-## 💡 今日总结
-(1-2 paragraphs, business + engineering value)
-
-## 🎯 今日得分
-(use table, weighted score, total score, grade)
-
-## ⏱️ 今日预估工时
-(table, realistic traditional dev estimate)
-
-## 📋 一、工作内容分析
-### 1.1 Git 状态
-### 1.2 代码变更统计（overall + key files）
-### 1.3 核心工作内容（按功能模块）
-### 1.4 明日工作建议（高 / 中 / 低优先级）
-
-Be factual, professional, and structured.
-Do NOT hallucinate features not implied by changes.
-```
-
-## 40. 2026/02/10 02:04:50
-
-```
-部署
-```
-
-## 41. 2026/02/10 02:02:02
-
-```
-动态列表的字段和解析规则应该和首页一致，确认下呢
-```
-
-## 42. 2026/02/10 01:59:18
-
-```
-搜索话题报错
-📤 [NetworkService] 请求 - operation: appSearchTopic, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
-✅ [Token] Token present, hasToken: true
-📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appSearchTopic, source=v2, dataEnv=prod, hasToken=true
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📥 [HTTP Response] status: 201, duration: 257ms
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-❌ [Decoding Error] operation: appSearchTopic, error: The data couldn’t be read because it is missing.
-❌ [API Error] operation: appSearchTopic, error: 数据解析失败, retry: 0/3, isRetryable: false
-Search error: decodingError(Swift.DecodingError.keyNotFound(CodingKeys(stringValue: "id", intValue: nil), Swift.DecodingError.Context(codingPath: [CodingKeys(stringValue: "data", intValue: nil), _CodingKey(stringValue: "Index 0", intValue: 0)], debugDescription: "No value associated with key CodingKeys(stringValue: \"id\", intValue: nil) (\"id\").", underlyingError: nil)))
-
-
-搜索用户报错
-📤 [NetworkService] 请求 - operation: appSearchTopic, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
-✅ [Token] Token present, hasToken: true
-📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appSearchTopic, source=v2, dataEnv=prod, hasToken=true
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📥 [HTTP Response] status: 201, duration: 257ms
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-❌ [Decoding Error] operation: appSearchTopic, error: The data couldn’t be read because it is missing.
-❌ [API Error] operation: appSearchTopic, error: 数据解析失败, retry: 0/3, isRetryable: false
-Search error: decodingError(Swift.DecodingError.keyNotFound(CodingKeys(stringValue: "id", intValue: nil), Swift.DecodingError.Context(codingPath: [CodingKeys(stringValue: "data", intValue: nil), _CodingKey(stringValue: "Index 0", intValue: 0)], debugDescription: "No value associated with key CodingKeys(stringValue: \"id\", intValue: nil) (\"id\").", underlyingError: nil)))
-
-搜索内容报错
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📥 [HTTP Response] status: 201, duration: 6449ms
-❌ [Decoding Error] operation: appSearchDyn, error: The data couldn’t be read because it is missing.
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-❌ [API Error] operation: appSearchDyn, error: 数据解析失败, retry: 0/3, isRetryable: false
-Search error: decodingError(Swift.DecodingError.keyNotFound(CodingKeys(stringValue: "id", intValue: nil), Swift.DecodingError.Context(codingPath: [CodingKeys(stringValue: "data", intValue: nil), CodingKeys(stringValue: "list", intValue: nil), _CodingKey(stringValue: "Index 0", intValue: 0)], debugDescription: "No value associated with key CodingKeys(stringValue: \"id\", intValue: nil) (\"id\").", underlyingError: nil)))nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📥 [HTTP Response] status: 201, duration: 6449ms
-❌ [Decoding Error] operation: appSearchDyn, error: The data couldn’t be read because it is missing.
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-❌ [API Error] operation: appSearchDyn, error: 数据解析失败, retry: 0/3, isRetryable: false
-Search error: decodingError(Swift.DecodingError.keyNotFound(CodingKeys(stringValue: "id", intValue: nil), Swift.DecodingError.Context(codingPath: [CodingKeys(stringValue: "data", intValue: nil), CodingKeys(stringValue: "list", intValue: nil), _CodingKey(stringValue: "Index 0", intValue: 0)], debugDescription: "No value associated with key CodingKeys(stringValue: \"id\", intValue: nil) (\"id\").", underlyingError: nil)))
-```
-
-## 43. 2026/02/10 01:54:51
-
-```
-宽度和文字适配
-```
-
-## 44. 2026/02/10 01:53:59
-
-```
-按钮宽度缩窄
-```
-
-## 45. 2026/02/10 01:50:20
-
-```
-帮我部署
-```
-
-## 46. 2026/02/10 01:45:55
-
-```
-还是有报错
-nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📥 [HTTP Response] status: 201, duration: 11261ms
-❌ [API Error] operation: appSearchDyn, code: 500, message: collection.aggregate:fail -501001 resource system error. [FailedOperation.Timeout] Execution request timeout, Please check optimize your request(such as index), but if the problem persists, contact us. 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/DATABASE_TIMEOUT
-❌ [API Error] operation: appSearchDyn, error: 请求超时，请稍后重试
-nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-🔄 [Retry] operation: appSearchDyn, attempt: 1/3, delay: 1.0s, reason: 请求超时，请稍后重试
-📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appSearchDyn, source=v2, dataEnv=prod, hasToken=true
-nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appSearchDyn, source=v2, dataEnv=prod, hasToken=true
-nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📤 [NetworkService] 请求 - operation: appSearchUser, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
-✅ [Token] Token present, hasToken: true
-📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appSearchUser, source=v2, dataEnv=prod, hasToken=true
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📥 [HTTP Response] status: 201, duration: 2219ms
-❌ [Decoding Error] operation: appSearchUser, error: The data couldn’t be read because it is missing.
-nw_socket_set_connection_idle [C9.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-❌ [API Error] operation: appSearchUser, error: 数据解析失败, retry: 0/3, isRetryable: false
-Search error: decodingError(Swift.DecodingError.keyNotFound(CodingKeys(stringValue: "id", intValue: nil), Swift.DecodingError.Context(codingPath: [CodingKeys(stringValue: "data", intValue: nil), _CodingKey(stringValue: "Index 0", intValue: 0)], debugDescription: "No value associated with key CodingKeys(stringValue: \"id\", intValue: nil) (\"id\").", underlyingError: nil)))
-📤 [NetworkService] 请求 - operation: appSearchTopic, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
-✅ [Token] Token present, hasToken: true
-💾 [Cache Hit] operation: appSearchTopic, duration: 0ms
-nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📥 [HTTP Response] status: 201, duration: 11251ms
-❌ [API Error] operation: appSearchDyn, code: 500, message: collection.aggregate:fail -501001 resource system error. [FailedOperation.Timeout] Execution request timeout, Please check optimize your request(such as index), but if the problem persists, contact us. 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/DATABASE_TIMEOUT
-❌ [API Error] operation: appSearchDyn, error: 请求超时，请稍后重试
-🔄 [Retry] operation: appSearchDyn, attempt: 3/3, delay: 4.0s, reason: 请求超时，请稍后重试
-nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📥 [HTTP Response] status: 201, duration: 11271ms
-❌ [API Error] operation: appSearchDyn, code: 500, message: collection.aggregate:fail -501001 resource system error. [FailedOperation.Timeout] Execution request timeout, Please check optimize your request(such as index), but if the problem persists, contact us. 更多错误信息请访问：https://docs.cloudbase.net/error-code/basic/DATABASE_TIMEOUT
-❌ [API Error] operation: appSearchDyn, error: 请求超时，请稍后重试
-nw_socket_set_connection_idle [C8.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-🔄 [Retry] operation: appSearchDyn, attempt: 2/3, delay: 2.0s, reason: 请求超时，请稍后重试
-```
-
-## 47. 2026/02/10 01:41:05
-
-```
-直接部署
-```
-
-## 48. 2026/02/10 01:38:57
-
-```
-参与话题 按钮 复用 帖子详情页底部按钮样式
-```
-
-## 49. 2026/02/10 01:37:02
-
-```
-📤 [NetworkService] 请求 - operation: appSearchUser, url: https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, needsToken: true
-✅ [Token] Token present, hasToken: true
-📤 [HTTP Request] POST https://juqi-api-server-217941-7-1314478640.sh.run.tcloudbase.com/app/v2/api, body: operation=appSearchUser, source=v2, dataEnv=prod, hasToken=true
-nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-📥 [HTTP Response] status: 201, duration: 1174ms
-nw_socket_set_connection_idle [C1.1.1.1:3] setsockopt SO_CONNECTION_IDLE failed [42: Protocol not available]
-❌ [API Error] operation: appSearchUser, code: 400, message: 内容安全检查失败
-❌ [API Error] operation: appSearchUser, error: 服务异常(400): 内容安全检查失败
-❌ [API Error] operation: appSearchUser, error: 服务异常(400): 内容安全检查失败, retry: 0/3, isRetryable: false
-Search error: apiError(code: 400, message: "内容安全检查失败")
-```
-
-## 50. 2026/02/10 01:34:04
-
-```
-需要部署吗
+怎么在云开发控制台看？
 ```

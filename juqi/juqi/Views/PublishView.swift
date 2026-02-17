@@ -70,6 +70,15 @@ struct PublishView: View {
     @Binding var activeTab: TabItem
     /// 从话题详情页「参与话题」进入时预填的话题名
     var initialTopic: String? = nil
+    /// 从电站页进入时预填的电站 ID，发布时发到该电站
+    var initialCircleId: String? = nil
+    /// 从电站页进入时展示的电站名称
+    var initialCircleTitle: String? = nil
+    /// 当前选中的发布电站（正常进入时也显示，可点击切换）
+    @State private var selectedCircleId: String = ""
+    @State private var selectedCircleTitle: String = "日常"
+    @State private var selectedCircleIsSecret: Bool = false
+    @State private var isShowingCirclePicker = false
     @State private var content: String = ""
     @State private var selectedCategory: PostTag = .daily
     @State private var selectedImages: [UIImage] = []
@@ -169,6 +178,16 @@ struct PublishView: View {
             }
         }
         .onAppear {
+            // 从电站页进入时预填发布电站；否则使用默认
+            if let id = initialCircleId, !id.isEmpty {
+                selectedCircleId = id
+                selectedCircleTitle = initialCircleTitle ?? "日常"
+                selectedCircleIsSecret = false
+            } else if selectedCircleId.isEmpty {
+                selectedCircleId = "a9bfcffc5eba1e380072920313b78c59"
+                selectedCircleTitle = "日常"
+                selectedCircleIsSecret = false
+            }
             // 从话题详情「参与话题」进入时预填话题
             if let topic = initialTopic, !topic.isEmpty, !selectedTopics.contains(topic) {
                 selectedTopics = [topic]
@@ -208,6 +227,17 @@ struct PublishView: View {
         .sheet(isPresented: $isShowingMultiImagePicker) {
             MultiImagePicker(images: $selectedImages, maxSelection: maxImageCount - selectedImages.count)
         }
+        .sheet(isPresented: $isShowingCirclePicker) {
+            PublishCirclePickerSheet(
+                selectedCircleId: $selectedCircleId,
+                selectedCircleTitle: $selectedCircleTitle,
+                selectedCircleIsSecret: $selectedCircleIsSecret,
+                isPresented: $isShowingCirclePicker,
+                onNoPermission: {
+                    ToastManager.shared.error("本电站需要成员才可发帖")
+                }
+            )
+        }
         .actionSheet(isPresented: $isShowingActionSheet) {
             var buttons: [ActionSheet.Button] = [
                 .default(Text("从相册选择")) { isShowingMultiImagePicker = true }
@@ -243,9 +273,22 @@ struct PublishView: View {
             
             Spacer()
             
-            Text("发布动态")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundColor(.white)
+            Button(action: { isShowingCirclePicker = true }) {
+                VStack(spacing: 2) {
+                    Text("发布动态")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.white)
+                    Text("发布至 \(selectedCircleTitle)")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(.white.opacity(0.7))
+                    if selectedCircleIsSecret {
+                        Text("发到这里的内容不会出现在首页和你的个人主页")
+                            .font(.system(size: 10, weight: .regular))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+            }
+            .buttonStyle(.plain)
             
             Spacer()
             
@@ -615,11 +658,13 @@ struct PublishView: View {
                 print("✅ 第 \(index + 1) 张上传成功: \(url)")
             }
             
-            print("📡 正在调用发布接口...")
+            let circleIdToUse = selectedCircleId.isEmpty ? "a9bfcffc5eba1e380072920313b78c59" : selectedCircleId
+            let circleTitleToUse = selectedCircleTitle.isEmpty ? "日常" : selectedCircleTitle
+            print("📡 正在调用发布接口... circleId=\(circleIdToUse), circleTitle=\(circleTitleToUse)")
             let response = try await APIService.shared.publishDyn(
                 content: content,
-                circleId: "a9bfcffc5eba1e380072920313b78c59",
-                circleTitle: "日常",
+                circleId: circleIdToUse,
+                circleTitle: circleTitleToUse,
                 imageIds: imageUrls,
                 topic: selectedTopics,
                 ait: selectedAitUsers,
@@ -663,6 +708,174 @@ struct PublishView: View {
         let result = UIGraphicsGetImageFromCurrentImageContext() ?? image
         UIGraphicsEndImageContext()
         return result
+    }
+}
+
+// MARK: - 发布电站选择器（弹层列表，仅限成员电站显示锁+「仅限成员」）
+//
+// 无权限电站判断规则（与后端 publishDyn getPublicAuth 一致）：
+// - 列表 appGetCircleList 已返回 isMemberPublic，打开选择器仅 1 次请求；
+// - isMemberPublic == true 的电站显示锁+「仅限成员」，点击时再请求 getCircleDetail 校验 followStatus；
+// - 无权限 = isMemberPublic == true 且 followStatus != 2；非仅成员电站直接可选。
+struct PublishCirclePickerSheet: View {
+    @Binding var selectedCircleId: String
+    @Binding var selectedCircleTitle: String
+    @Binding var selectedCircleIsSecret: Bool
+    @Binding var isPresented: Bool
+    var onNoPermission: () -> Void
+    
+    @State private var circles: [CircleItem] = []
+    @State private var isLoading = true
+    @State private var loadError: String?
+    /// 点击仅限成员电站且无权限时高亮提示的 id，用于短暂高亮「仅限成员」文案
+    @State private var highlightedNoPermissionId: String? = nil
+    /// 在弹窗内显示无权限 Toast（避免被 sheet 遮挡）
+    @State private var showNoPermissionToast = false
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "#FF6B35")))
+                } else if let err = loadError {
+                    VStack(spacing: 12) {
+                        Text(err)
+                            .font(.system(size: 15))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(circles) { circle in
+                                circleRow(circle)
+                                if circle.id != circles.last?.id {
+                                    Divider()
+                                        .background(Color(hex: "#2F3336"))
+                                        .padding(.leading, 20)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 40)
+                    }
+                }
+            }
+            .navigationTitle("选择发布电站")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        isPresented = false
+                    }
+                    .foregroundColor(.white.opacity(0.8))
+                }
+            }
+            .task { await loadCircles() }
+            .toast(isPresented: $showNoPermissionToast, message: "本电站需要成员才可发帖", type: .error)
+        }
+    }
+    
+    private func circleRow(_ circle: CircleItem) -> some View {
+        let needMember = circle.isMemberPublic == true
+        let isHighlighted = highlightedNoPermissionId == circle.id
+        return Button {
+            Task { await selectCircle(circle) }
+        } label: {
+            HStack(spacing: 12) {
+                if let urlString = circle.imageSmall, !urlString.isEmpty, let u = URL(string: urlString) {
+                    AsyncImage(url: u) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                        case .failure, .empty: placeholderThumb
+                        @unknown default: placeholderThumb
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    placeholderThumb
+                }
+                Text(circle.title)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if needMember {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 12))
+                        Text("仅限成员")
+                            .font(.system(size: 12, weight: .regular))
+                    }
+                    .foregroundColor(isHighlighted ? Color(hex: "#FF6B35") : Color(hex: "#8E8E93"))
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var placeholderThumb: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Color(hex: "#2F3336"))
+            .frame(width: 44, height: 44)
+    }
+    
+    private func loadCircles() async {
+        isLoading = true
+        loadError = nil
+        defer { isLoading = false }
+        do {
+            let list = try await APIService.shared.getCircleList()
+            await MainActor.run { circles = list }
+        } catch {
+            await MainActor.run { loadError = "加载电站列表失败" }
+        }
+    }
+    
+    /// 仅限成员发帖的电站需请求详情得到 followStatus 再决定是否可选中；非仅成员电站直接选中
+    private func selectCircle(_ circle: CircleItem) async {
+        if circle.isMemberPublic != true {
+            await MainActor.run {
+                selectedCircleId = circle.id
+                selectedCircleTitle = circle.title
+                selectedCircleIsSecret = circle.isSecret == true
+                isPresented = false
+            }
+            return
+        }
+        do {
+            let detail = try await APIService.shared.getCircleDetail(circleId: circle.id)
+            let status = detail.followStatus ?? 0
+            await MainActor.run {
+                if status == 2 {
+                    selectedCircleId = circle.id
+                    selectedCircleTitle = circle.title
+                    selectedCircleIsSecret = circle.isSecret == true
+                    isPresented = false
+                } else {
+                    highlightNoPermissionThenToast(circleId: circle.id)
+                }
+            }
+        } catch {
+            await MainActor.run { highlightNoPermissionThenToast(circleId: circle.id) }
+        }
+    }
+    
+    private func highlightNoPermissionThenToast(circleId: String) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            highlightedNoPermissionId = circleId
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            withAnimation(.easeOut(duration: 0.2)) {
+                highlightedNoPermissionId = nil
+            }
+            showNoPermissionToast = true
+        }
     }
 }
 

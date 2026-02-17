@@ -6,7 +6,21 @@ import { UserService } from '../user/user.service';
 import { MessageService } from '../message/message.service';
 
 /**
- * 迁移配置
+ * 固定走直连的 operation 清单（代码内写死，不按环境变量按接口切换）
+ * 测试环境以 apiServer 直连为主，上述 7 个固定直连；其余走 appApiV201。
+ */
+export const DIRECT_DB_OPERATIONS: readonly string[] = [
+  'appGetCurrentUserProfile',
+  'appGetDynList',
+  'appGetDynDetail',
+  'appChargeDyn',
+  'appGetUnreadCount',
+  'appGetMessageList',
+  'appGetChatList',
+];
+
+/**
+ * 迁移配置（只读展示用）
  * 控制哪些接口使用直连数据库，哪些继续使用云函数
  * true = 使用直连数据库
  * false = 使用云函数
@@ -16,6 +30,10 @@ export interface MigrationConfig {
   appGetCurrentUserProfile: boolean;
   /** 获取动态列表 */
   appGetDynList: boolean;
+  /** 获取动态详情（与列表同源，避免列表直连时详情走云函数导致 404） */
+  appGetDynDetail: boolean;
+  /** 充电动态（与列表同源，避免列表直连时充电走云函数导致 document does not exist） */
+  appChargeDyn: boolean;
   /** 获取未读消息数 */
   appGetUnreadCount: boolean;
   /** 获取消息列表 */
@@ -44,9 +62,6 @@ function isReadOnlyOperation(operation: string): boolean {
 
 @Injectable()
 export class AppService {
-  /** 迁移配置 - 控制接口路由 */
-  private migrationConfig: MigrationConfig;
-
   /** 全局回滚开关 - 紧急情况下关闭所有直连，使用云函数 */
   private useCloudFunctionFallback: boolean;
 
@@ -57,34 +72,20 @@ export class AppService {
     private readonly userService: UserService,
     private readonly messageService: MessageService,
   ) {
-    // 初始化迁移配置
-    // 可通过环境变量 MIGRATION_xxx 控制
-    this.migrationConfig = {
-      appGetCurrentUserProfile: this.configService.get('MIGRATION_USER_PROFILE') === 'true',
-      appGetDynList: this.configService.get('MIGRATION_DYN_LIST') === 'true',
-      appGetUnreadCount: this.configService.get('MIGRATION_UNREAD_COUNT') === 'true',
-      appGetMessageList: this.configService.get('MIGRATION_MESSAGE_LIST') === 'true',
-      appGetChatList: this.configService.get('MIGRATION_CHAT_LIST') === 'true',
-    };
-
-    // 全局回滚开关
     this.useCloudFunctionFallback = this.configService.get('USE_CLOUD_FUNCTION_FALLBACK') === 'true';
-
-    console.log('[AppService] 迁移配置:', this.migrationConfig);
+    console.log('[AppService] 直连清单: DIRECT_DB_OPERATIONS（固定 7 个），不按 MIGRATION_* 切换');
     console.log('[AppService] 回滚开关:', this.useCloudFunctionFallback);
   }
 
   /**
-   * 运行时更新迁移配置
-   * 用于动态启用/禁用直连功能
+   * @deprecated 直连由 DIRECT_DB_OPERATIONS 固定，不再支持按接口切换；保留为空实现避免调用方报错
    */
-  updateMigrationConfig(key: keyof MigrationConfig, value: boolean): void {
-    this.migrationConfig[key] = value;
-    console.log(`[AppService] 更新迁移配置: ${key} = ${value}`);
+  updateMigrationConfig(_key: keyof MigrationConfig, _value: boolean): void {
+    // no-op
   }
 
   /**
-   * 设置全局回滚开关
+   * 设置全局回滚开关（仅用于故障应急）
    */
   setFallbackMode(enabled: boolean): void {
     this.useCloudFunctionFallback = enabled;
@@ -92,21 +93,30 @@ export class AppService {
   }
 
   /**
-   * 获取当前迁移配置
+   * 获取当前迁移配置（只读展示，由 DIRECT_DB_OPERATIONS + 回滚开关推导）
    */
   getMigrationConfig(): MigrationConfig {
-    return { ...this.migrationConfig };
+    const useDirect = !this.useCloudFunctionFallback;
+    return {
+      appGetCurrentUserProfile: useDirect && DIRECT_DB_OPERATIONS.includes('appGetCurrentUserProfile'),
+      appGetDynList: useDirect && DIRECT_DB_OPERATIONS.includes('appGetDynList'),
+      appGetDynDetail: useDirect && DIRECT_DB_OPERATIONS.includes('appGetDynDetail'),
+      appChargeDyn: useDirect && DIRECT_DB_OPERATIONS.includes('appChargeDyn'),
+      appGetUnreadCount: useDirect && DIRECT_DB_OPERATIONS.includes('appGetUnreadCount'),
+      appGetMessageList: useDirect && DIRECT_DB_OPERATIONS.includes('appGetMessageList'),
+      appGetChatList: useDirect && DIRECT_DB_OPERATIONS.includes('appGetChatList'),
+    };
   }
 
   /**
    * 检查接口是否使用直连
+   * 仅由 DIRECT_DB_OPERATIONS + USE_CLOUD_FUNCTION_FALLBACK 决定，不再读取 MIGRATION_* 环境变量
    */
   shouldUseDirectDB(operation: string): boolean {
-    // 如果开启了全局回滚，则所有接口都使用云函数
     if (this.useCloudFunctionFallback) {
       return false;
     }
-    return this.migrationConfig[operation as keyof MigrationConfig] || false;
+    return DIRECT_DB_OPERATIONS.includes(operation);
   }
 
   /** 脱敏 openId，仅用于日志 */
@@ -152,6 +162,9 @@ export class AppService {
     }
 
     // 使用云函数
+    if (operation === 'appGetDynList') {
+      console.log(`[AppService] 排查 动态列表走云函数 - dataEnv: ${dataEnv}`);
+    }
     return this.callAppApiCloudFunction(operation, data, token, dataEnv);
   }
 
@@ -170,6 +183,12 @@ export class AppService {
 
       case 'appGetDynList':
         return this.handleGetDynList(data, openId, dataEnv);
+
+      case 'appGetDynDetail':
+        return this.handleGetDynDetail(data, openId, dataEnv);
+
+      case 'appChargeDyn':
+        return this.handleChargeDyn(data, openId, dataEnv);
 
       case 'appGetUnreadCount':
         return this.handleGetUnreadCount(openId, dataEnv);
@@ -216,7 +235,18 @@ export class AppService {
     openId: string | null,
     dataEnv: string,
   ): Promise<any> {
-    const { type = 2, pageSize = 10, offset = 0 } = data || {};
+    const { type: rawType = 2, pageSize: dataPageSize, offset = 0, limit, publicTime } = data || {};
+    // 与 appApiV201 一致：客户端传字符串 all/follow/hot，映射为数字 2/6/10
+    const typeMap: Record<string, number> = {
+      all: 2,    // 最新
+      follow: 6, // 关注
+      hot: 10,   // 热榜
+    };
+    const type = typeof rawType === 'string' ? (typeMap[rawType] ?? 2) : Number(rawType);
+    const pageSize = limit ?? dataPageSize ?? 20;
+    console.log(
+      `[AppService] handleGetDynList 直连 - dataEnv: ${dataEnv}, type: ${type}(raw: ${rawType}), pageSize: ${pageSize}, offset: ${offset}, publicTime: ${publicTime ?? 'nil'}`,
+    );
 
     const result = await this.dynService.getDynList({
       type,
@@ -224,9 +254,55 @@ export class AppService {
       offset,
       dataEnv,
       openId: openId || undefined,
+      publicTime: publicTime ?? undefined,
     });
 
     return { code: 200, message: 'success', data: result };
+  }
+
+  /**
+   * 处理获取动态详情（与列表同库，避免 404）
+   */
+  private async handleGetDynDetail(
+    data: any,
+    openId: string | null,
+    dataEnv: string,
+  ): Promise<any> {
+    const id = data?.id;
+    if (!id) {
+      return { code: 400, message: '缺少动态ID' };
+    }
+    console.log(
+      `[AppService] handleGetDynDetail 直连 - id: ${id}, dataEnv: ${dataEnv}`,
+    );
+    const dyn = await this.dynService.getDynDetail({
+      dynId: id,
+      dataEnv,
+      openId: openId || undefined,
+    });
+    if (!dyn) {
+      return { code: 404, message: '动态不存在' };
+    }
+    return { code: 200, message: 'success', data: dyn };
+  }
+
+  /**
+   * 处理充电动态（直连，与列表/详情同库）
+   */
+  private async handleChargeDyn(
+    data: any,
+    openId: string | null,
+    dataEnv: string,
+  ): Promise<any> {
+    const id = data?.id;
+    if (!id) {
+      return { code: 400, message: '缺少动态ID', data: null };
+    }
+    if (!openId) {
+      return { code: 401, message: '未登录', data: null };
+    }
+    console.log(`[AppService] handleChargeDyn 直连 - id: ${id}, dataEnv: ${dataEnv}`);
+    return this.dynService.chargeDyn({ dynId: id, openId, dataEnv });
   }
 
   /**
@@ -326,12 +402,13 @@ export class AppService {
       };
       }
 
-      // 始终使用测试环境实例调用云函数（appApi v2 只部署在测试环境）
+      // 第一期：统一调用 appApiV201（仅 App 走 v201，小程序仍用旧函数）
       // dataEnv 仅作为参数传给云函数，由云函数内部切换数据库环境
       const cloudbase = this.cloudbaseService.getCloudbase('test');
+      const appApiName = 'appApiV201';
 
       const dataEnvEffective = dataEnv || 'test';
-      console.log(`[CloudFunction] Calling - name: appApi, operation: ${operation}, source: v2, hasToken: ${!!token}, dataEnv: ${dataEnvEffective}`);
+      console.log(`[CloudFunction] Calling - name: ${appApiName}, operation: ${operation}, source: v2, hasToken: ${!!token}, dataEnv: ${dataEnvEffective}`);
       if (operation === 'getMessagesNew' || operation === 'appGetMessageList') {
         const d = data || {};
         console.log(`[CloudFunction] 消息接口转发 data(传云函数): page=${d.page ?? 'nil'}, limit=${d.limit ?? 'nil'}, type=${d.type !== undefined ? d.type : 'nil'}, from=${d.from ?? 'nil'}, aitType=${d.aitType !== undefined ? d.aitType : 'nil'}`);
@@ -339,7 +416,7 @@ export class AppService {
 
       // 调用云函数，自动传递 source='v2' 参数和 dataEnv
       const result = await cloudbase.callFunction({
-        name: 'appApi',
+        name: appApiName,
         data: {
           operation,
           data: data || {},

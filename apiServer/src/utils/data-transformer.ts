@@ -186,19 +186,34 @@ export function transformFields<T extends Record<string, any>>(
 
 /**
  * 用户 Profile 数据转换
- * 适配 iOS UserProfile Codable 模型
+ * 适配 iOS UserProfile Codable 模型，与云函数 GetCurrentUserProfile 返回字段一致
  */
 export function transformUserProfile(user: any): any {
   if (!user) return null;
 
+  const followCount = toInt(user.followCount);
+  const followerCount = toInt(user.followerCount ?? user.fansCount);
+  const publishCount = toInt(user.publishCount ?? user.publishDynCount);
+  const collectionCount = toInt(user.collectionCount ?? user.collectCount);
+  const inviteCount = toInt(user.inviteCount);
+  const blockedCount = toInt(user.blockedCount);
+  const chargeNums = toInt(user.chargeNums ?? user.chargeCount);
+
   return {
     ...user,
     id: toString(user._id || user.id || user.openId, ''),
-    followCount: toInt(user.followCount),
-    fansCount: toInt(user.fansCount),
+    userName: toString(user.userName ?? user.nickName, ''),
+    followCount,
+    followerCount,
+    fansCount: followerCount,
+    publishCount,
+    publishDynCount: publishCount,
+    collectionCount,
+    collectCount: collectionCount,
+    inviteCount,
+    blockedCount,
+    chargeNums,
     likeCount: toInt(user.likeCount),
-    publishDynCount: toInt(user.publishDynCount),
-    collectCount: toInt(user.collectCount),
     isVip: toBool(user.isVip),
     canSendChat: toBool(user.canSendChat, true),
     // joinStatus: 1=normal, 2=pending, -1=deleted; 0 无效
@@ -230,8 +245,18 @@ export function transformDynItem(dyn: any): any {
     isPraised: toBool(dyn.isPraised),
     isCollected: toBool(dyn.isCollected),
     isOwn: toBool(dyn.isOwn),
+    // 充电=点赞，与 dyn.like / dyn.likeNums 一致；客户端用 chargeCount、isCharged
+    chargeCount: toInt(dyn.chargeCount ?? dyn.likeNums, 0),
+    isCharged: toBool(dyn.isCharged),
+    likeCount: toInt(dyn.likeCount ?? dyn.likeNums, 0),
+    isLiked: toBool(dyn.isLiked ?? dyn.isPraised),
     // 用户信息
     userInfo: dyn.userInfo ? transformUserProfile(dyn.userInfo) : null,
+    // 发布 IP 属地（合规：仅省/市等属地文案，如「广东」；无或非法则不返回）
+    ipLocation:
+      typeof dyn.ipLocation === 'string' && dyn.ipLocation.trim()
+        ? dyn.ipLocation.trim()
+        : undefined,
   };
 }
 

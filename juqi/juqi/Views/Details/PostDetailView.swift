@@ -19,6 +19,10 @@ struct PostDetailView: View {
     @State private var showImagePreview = false
     @State private var replyToComment: Comment? = nil
     @State private var commentListRefreshTrigger = UUID()
+    /// 展示用评论数（评论成功后 +1，与 detailPost 同步）
+    @State private var displayCommentCount: Int = 0
+    /// 展示用充电数（充电成功后 +1，与 detailPost 同步）
+    @State private var displayChargeCount: Int = 0
     @State private var isFollowing = false
     @State private var followStatus: Int? = nil // 0: 本人, 1: 无关注, 2: 已关注, 3: 已关注你, 4: 互相关注
     @State private var showActionSheet = false
@@ -28,8 +32,12 @@ struct PostDetailView: View {
     @State private var commentInputText = ""
     @State private var selectedCommentImage: UIImage? = nil
     @State private var showCommentImagePicker = false
+    @State private var pendingCommentImage: UIImage?
+    @State private var showCommentImageConfirmSheet = false
     @State private var showCommentEmojiPicker = false
     @State private var currentUserId: String? = nil
+    @State private var currentUserName: String = ""
+    @State private var currentUserAvatar: String? = nil
     @FocusState private var isCommentInputFocused: Bool
     @State private var showRepostSheet = false
     @State private var repostContent = ""
@@ -38,6 +46,12 @@ struct PostDetailView: View {
     @State private var navigationUser: String? = nil
     @State private var showCopyToast = false
     @State private var isPinned = false
+    @State private var errorMessage: String? = nil
+    /// 当前用户是否为管理员（是则无论谁的帖子都显示管理入口）
+    @State private var isCurrentUserAdmin = false
+    @State private var showUnfollowConfirm = false
+    /// 发现页电站列表（用于判断帖子电站是否可跳转）
+    @State private var discoverCircles: [CircleItem] = []
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -50,6 +64,30 @@ struct PostDetailView: View {
             } else if let detailPost = detailPost {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
+                        // 错误态：加载失败时展示重试
+                        if let msg = errorMessage {
+                            EmptyStateView(
+                                icon: "wifi.exclamationmark",
+                                title: "加载失败",
+                                message: msg,
+                                actionTitle: "重试",
+                                iconColor: .red.opacity(0.8),
+                                iconSize: 44,
+                                action: {
+                                    errorMessage = nil
+                                    Task {
+                                        await loadDetail()
+                                        await MainActor.run {
+                                            commentListRefreshTrigger = UUID()
+                                        }
+                                    }
+                                }
+                            )
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                            .padding(.bottom, 8)
+                        }
+                        
                         // 用户信息区
                         userInfoSection(post: detailPost)
                             .padding(.horizontal, 16)
@@ -59,17 +97,7 @@ struct PostDetailView: View {
                         Divider()
                             .background(Color(hex: "#2F3336"))
                         
-                        // 圈子信息区
-                        if let circleId = detailPost.circleId, let circleTitle = detailPost.circleTitle {
-                            circleInfoSection(circleId: circleId, circleTitle: circleTitle, joinCount: detailPost.circleJoinCount)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                            
-                            Divider()
-                                .background(Color(hex: "#2F3336"))
-                        }
-                        
-                        // 帖子内容区
+                        // 帖子内容区（已取消独立电站栏，仅保留日期下方「发布在 xx电站」）
                         postContentSection(post: detailPost)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 16)
@@ -77,13 +105,15 @@ struct PostDetailView: View {
                         Divider()
                             .background(Color(hex: "#2F3336"))
                         
-                        // 互动详情区
-                        interactionSection(post: detailPost)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 16)
-                        
-                        Divider()
-                            .background(Color(hex: "#2F3336"))
+                        // 互动详情区：仅在有充电时显示充电栏
+                        if (displayChargeCount > 0) || isCharged {
+                            interactionSection(post: detailPost)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 16)
+                            
+                            Divider()
+                                .background(Color(hex: "#2F3336"))
+                        }
                         
                         // 评论区域
                         CommentListView(
@@ -92,6 +122,9 @@ struct PostDetailView: View {
                             currentUserId: currentUserId,
                             onReply: { comment in
                                 replyToComment = comment
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                    showCommentInput = true
+                                }
                             }
                         )
                         .id(commentListRefreshTrigger)
@@ -143,9 +176,13 @@ struct PostDetailView: View {
         .task {
             // 先展示列表带来的 post，避免白屏长时间转圈；再后台拉详情与用户信息
             detailPost = post
+            displayCommentCount = post.commentCount
+            displayChargeCount = post.chargeCount
+            isCharged = post.isCharged
             isPinned = post.isPinned ?? false
             isLoading = false
             await loadDetail()
+            await loadDiscoverCircles()
         }
         .fullScreenCover(isPresented: $showImagePreview) {
             if let images = detailPost?.images {
@@ -153,15 +190,21 @@ struct PostDetailView: View {
             }
         }
         .toolbar(.hidden, for: .tabBar)
-        .overlay(
-            ActionSheetView(
-                isPresented: $showActionSheet,
+        .sheet(isPresented: $showActionSheet) {
+            MoreOptionsSheetView(
                 actions: actionSheetItems,
-                onActionSelected: { action in
-                    handleAction(action)
-                }
+                onActionSelected: { handleAction($0) },
+                onDismiss: { showActionSheet = false }
             )
-        )
+        }
+        .confirmationDialog("取消关注", isPresented: $showUnfollowConfirm, titleVisibility: .visible) {
+            Button("确定取消关注", role: .destructive) {
+                Task { await toggleFollow() }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("确定不再关注该用户？")
+        }
         .environment(\.openURL, OpenURLAction { url in
             if url.scheme == "juqi" {
                 let host = url.host ?? ""
@@ -271,32 +314,22 @@ struct PostDetailView: View {
                             .font(.system(size: 14))
                             .foregroundColor(Color(hex: "#71767A"))
                     }
-                    
+                    // 个性签名下方：日期 + IP 属地（合规展示，仅属地如「广东」）
+                    Text(dateAndLocationString(post: post))
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "#71767A"))
                 }
                 
                 Spacer()
                 
-                // 关注按钮或管理入口
-                if followStatus == 0 {
-                    // 本人帖子，显示管理入口
+                // 本人帖子不在此处显示管理入口（已移入右上角「更多」）
+                if (followStatus ?? 0) != 0 {
+                    // 非本人帖子，显示关注按钮；已关注时点击弹出取消关注确认
                     Button(action: {
-                        // 管理入口
-                    }) {
-                        HStack(spacing: 4) {
-                            Text("管理入口")
-                                .font(.system(size: 14))
-                                .foregroundColor(Color(hex: "#FF6B35"))
-                            
-                            Image(systemName: "ellipsis")
-                                .foregroundColor(Color(hex: "#71767A"))
-                                .font(.system(size: 12))
-                        }
-                    }
-                } else if let status = followStatus, status != 0 {
-                    // 非本人帖子，显示关注按钮
-                    Button(action: {
-                        Task {
-                            await toggleFollow()
+                        if isFollowing {
+                            showUnfollowConfirm = true
+                        } else {
+                            Task { await toggleFollow() }
                         }
                     }) {
                         Text(isFollowing ? "已关注" : "关注")
@@ -425,13 +458,12 @@ struct PostDetailView: View {
                 }
             }
             
-            // 底部信息栏：时间和互动按钮 (匹配首页样式)
-            HStack(spacing: 0) {
-                // 发帖时间
-                Text(formatDate(post.publishTime))
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "#71767A"))
-                    .frame(minWidth: 100, alignment: .leading)
+            // 底部信息栏：电站（信箱 icon+电站名/日常）与互动按钮，此处不显示日期
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    circleDisplayView(post: post)
+                }
+                .frame(minWidth: 100, alignment: .leading)
                 
                 Spacer()
                 
@@ -452,7 +484,7 @@ struct PostDetailView: View {
                 // 评论
                 detailInteractionButton(
                     icon: "bubble.right",
-                    count: post.commentCount,
+                    count: displayCommentCount,
                     color: Color(hex: "#71767A"),
                     action: {
                         let generator = UIImpactFeedbackGenerator(style: .light)
@@ -465,18 +497,33 @@ struct PostDetailView: View {
                 // 充电（电池图标 - 代替喜欢功能）
                 ChargeButton(
                     isCharged: isCharged,
-                    count: post.chargeCount,
+                    count: displayChargeCount,
                     action: {
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
                         Task {
                             do {
                                 _ = try await APIService.shared.chargeDyn(id: post.id)
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                                    isCharged.toggle()
+                                await MainActor.run {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                        isCharged = true
+                                        displayChargeCount += 1
+                                    }
+                                }
+                                await loadDetail()
+                            } catch let err as APIError {
+                                if err.isAlreadyChargedError {
+                                    await MainActor.run {
+                                        isCharged = true
+                                        if displayChargeCount == 0 { displayChargeCount = 1 }
+                                    }
+                                } else {
+                                    print("Failed to charge: \(err)")
+                                    await loadDetail()
                                 }
                             } catch {
                                 print("Failed to charge: \(error)")
+                                await loadDetail()
                             }
                         }
                     }
@@ -504,6 +551,15 @@ struct PostDetailView: View {
         }
     }
     
+    /// 充电列表展示用用户：接口返回的 likeUsers + 充电成功时当前用户（若尚未在列表中）放最前；当前用户先占位头像，等 loadDetail 返回 likeUsers 后显示真实头像
+    private func chargeListDisplayUsers(post: Post) -> [Post.LikeUser] {
+        let fromApi = post.likeUsers ?? []
+        guard isCharged, let uid = currentUserId else { return fromApi }
+        if fromApi.contains(where: { $0.id == uid }) { return fromApi }
+        let current = Post.LikeUser(id: uid, userName: currentUserName, avatar: nil)
+        return [current] + fromApi
+    }
+    
     // MARK: - 互动详情区
     private func interactionSection(post: Post) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -517,19 +573,20 @@ struct PostDetailView: View {
                     .font(.system(size: 14))
                     .foregroundColor(.white)
                 
-                Text("\(post.chargeCount)")
+                Text("\(displayChargeCount)")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.white)
             }
             
             // 互动用户头像列表
-            if let likeUsers = post.likeUsers, !likeUsers.isEmpty {
+            let chargeListUsers = chargeListDisplayUsers(post: post)
+            if !chargeListUsers.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            let displayCount = isLikeListExpanded ? likeUsers.count : min(8, likeUsers.count)
+                            let displayCount = isLikeListExpanded ? chargeListUsers.count : min(8, chargeListUsers.count)
                             
-                            ForEach(Array(likeUsers.prefix(displayCount).enumerated()), id: \.element.id) { index, user in
+                            ForEach(Array(chargeListUsers.prefix(displayCount).enumerated()), id: \.element.id) { index, user in
                                 NavigationLink(destination: UserProfileView(userId: user.id, userName: user.userName)) {
                                     AsyncImage(url: URL(string: user.avatar ?? "")) { image in
                                         image
@@ -554,7 +611,7 @@ struct PostDetailView: View {
                             }
                             
                             // 如果还有更多用户，显示省略号或展开按钮
-                            if likeUsers.count > 8 {
+                            if chargeListUsers.count > 8 {
                                 if !isLikeListExpanded {
                                     Button(action: {
                                         withAnimation {
@@ -572,13 +629,13 @@ struct PostDetailView: View {
                     }
                     
                     // 展开/收起按钮
-                    if likeUsers.count > 8 {
+                    if chargeListUsers.count > 8 {
                         Button(action: {
                             withAnimation {
                                 isLikeListExpanded.toggle()
                             }
                         }) {
-                            Text(isLikeListExpanded ? "收起" : "展开 \(likeUsers.count) 个用户")
+                            Text(isLikeListExpanded ? "收起" : "展开 \(chargeListUsers.count) 个用户")
                                 .font(.system(size: 13))
                                 .foregroundColor(Color(hex: "#FF6B35"))
                         }
@@ -619,11 +676,26 @@ struct PostDetailView: View {
                 Task {
                     do {
                         _ = try await APIService.shared.chargeDyn(id: post.id)
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                            isCharged.toggle()
+                        await MainActor.run {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                isCharged = true
+                                displayChargeCount += 1
+                            }
+                        }
+                        await loadDetail()
+                    } catch let err as APIError {
+                        if err.isAlreadyChargedError {
+                            await MainActor.run {
+                                isCharged = true
+                                if displayChargeCount == 0 { displayChargeCount = 1 }
+                            }
+                        } else {
+                            print("Failed to charge: \(err)")
+                            await loadDetail()
                         }
                     } catch {
                         print("Failed to charge: \(error)")
+                        await loadDetail()
                     }
                 }
             }) {
@@ -767,7 +839,7 @@ struct PostDetailView: View {
             // 表情建议行
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(["😊", "😍", "👍", "❤️", "🔥", "✨", "🎉", "💯", "👏", "🎉"], id: \.self) { emoji in
+                    ForEach(["😊", "😍", "👍", "❤️", "🔥", "✨", "🎉", "💯", "👏"], id: \.self) { emoji in
                         Button(action: {
                             commentInputText += emoji
                         }) {
@@ -815,13 +887,16 @@ struct PostDetailView: View {
                 set: { newValue in
                     if let newValue = newValue {
                         Task {
-                            await loadCommentImage(from: newValue)
+                            await loadCommentImageForConfirm(from: newValue)
                         }
                     }
                 }
             ),
             matching: .images
         )
+        .sheet(isPresented: $showCommentImageConfirmSheet) {
+            commentImageConfirmSheet
+        }
         .sheet(isPresented: $showRepostSheet) {
             RepostSheetView(
                 post: post,
@@ -850,14 +925,50 @@ struct PostDetailView: View {
         }
     }
     
-    private func loadCommentImage(from item: PhotosPickerItem) async {
+    /// 相册选图后仅加载并弹出确认，确认后再填入评论
+    private func loadCommentImageForConfirm(from item: PhotosPickerItem) async {
         guard let data = try? await item.loadTransferable(type: Data.self),
               let image = UIImage(data: data) else {
             return
         }
-        
         await MainActor.run {
-            selectedCommentImage = image
+            pendingCommentImage = image
+            showCommentImageConfirmSheet = true
+        }
+    }
+    
+    /// 评论图片确认弹窗：预览 + 确认 / 取消
+    private var commentImageConfirmSheet: some View {
+        NavigationStack {
+            ZStack {
+                Color(hex: "#000000").ignoresSafeArea()
+                if let image = pendingCommentImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .padding()
+                }
+            }
+            .navigationTitle("使用图片")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        pendingCommentImage = nil
+                        showCommentImageConfirmSheet = false
+                    }
+                    .foregroundColor(Color(hex: "#71767A"))
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("确认") {
+                        selectedCommentImage = pendingCommentImage
+                        pendingCommentImage = nil
+                        showCommentImageConfirmSheet = false
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Color(hex: "#FF6B35"))
+                }
+            }
         }
     }
     
@@ -893,6 +1004,7 @@ struct PostDetailView: View {
                 showCommentInput = false
                 isCommentInputFocused = false
                 commentListRefreshTrigger = UUID()
+                displayCommentCount += 1
             }
         } catch {
             print("Failed to submit comment: \(error)")
@@ -907,6 +1019,54 @@ struct PostDetailView: View {
         return formatter.string(from: date)
     }
     
+    /// 个性签名下方：日期 + IP 属地（合规，仅展示属地如「广东」）
+    private func dateAndLocationString(post: Post) -> String {
+        let dateStr = formatDate(post.publishTime)
+        guard let loc = post.ipLocation, !loc.isEmpty else { return dateStr }
+        return "\(dateStr) · \(loc)"
+    }
+    
+    /// 发布在 xx 电站：与发现页同一数据源（appGetCircleList 白名单），按电站 id 匹配；icon + 电站名可跳转，否则显示「日常」不跳转
+    private func circleDisplayView(post: Post) -> some View {
+        let matchedCircle = post.circleId.flatMap { cid in discoverCircles.first { $0.id == cid } }
+        let displayName: String = matchedCircle?.title ?? "日常"
+        let canNavigate = matchedCircle != nil
+        
+        return Group {
+            if canNavigate, let circle = matchedCircle {
+                NavigationLink(destination: CircleDetailView(circleId: circle.id, circleTitle: circle.title)) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "link.circle")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(hex: "#71767A"))
+                        Text(displayName)
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(hex: "#71767A"))
+                    }
+                }
+                .buttonStyle(.plain)
+            } else if post.circleId != nil || (post.circleTitle != nil && !(post.circleTitle?.isEmpty ?? true)) {
+                HStack(spacing: 4) {
+                    Image(systemName: "link.circle")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "#71767A"))
+                    Text("日常")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "#71767A"))
+                }
+            }
+        }
+    }
+    
+    private func loadDiscoverCircles() async {
+        do {
+            let list = try await APIService.shared.getCircleList()
+            await MainActor.run { discoverCircles = list }
+        } catch {
+            // 静默失败，仅影响电站是否可跳转
+        }
+    }
+    
     private func loadDetail() async {
         // 不再置 isLoading = true，首屏已用 post 展示，此处仅后台刷新详情
         async let detailTask = APIService.shared.getDynDetail(id: post.id)
@@ -915,11 +1075,17 @@ struct PostDetailView: View {
         do {
             let (detail, userProfile) = try await (detailTask, userTask)
             await MainActor.run {
+                errorMessage = nil
                 detailPost = detail
+                displayCommentCount = detail.commentCount
+                displayChargeCount = detail.chargeCount
                 isCharged = detail.isCharged
                 currentUserId = userProfile.id
+                currentUserName = userProfile.userName
+                currentUserAvatar = userProfile.avatar
                 isCollected = detail.isCollected
                 isPinned = detail.isPinned ?? false
+                isCurrentUserAdmin = userProfile.admin == true
             }
             // 本人帖子：followStatus = 0；非本人：从接口拉取关注状态
             if userProfile.id == detail.userId {
@@ -931,6 +1097,7 @@ struct PostDetailView: View {
                 let status = try await APIService.shared.getUserFollowStatus(userId: detail.userId)
                 await MainActor.run {
                     switch status {
+                    case .isSelf: followStatus = 0
                     case .notFollowing: followStatus = 1
                     case .following: followStatus = 2
                     case .followBack: followStatus = 3
@@ -942,42 +1109,85 @@ struct PostDetailView: View {
         } catch {
             if error is CancellationError { return }
             print("Failed to load detail: \(error)")
+            await MainActor.run {
+                errorMessage = "加载失败，请重试"
+            }
             if let userProfile = try? await userTask {
-                await MainActor.run { currentUserId = userProfile.id }
+                await MainActor.run {
+                    currentUserId = userProfile.id
+                    currentUserName = userProfile.userName
+                    currentUserAvatar = userProfile.avatar
+                }
             }
         }
     }
     
     private func toggleFollow() async {
         guard let detailPost = detailPost else { return }
+        if followStatus == 0 { return } // 本人，不请求关注接口
+        
+        // 乐观更新：先刷新按钮状态，请求完成后再用接口结果校正
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isFollowing.toggle()
+            }
+        }
         
         do {
             if isFollowing {
-                _ = try await APIService.shared.unfollowUser(userId: detailPost.userId)
-            } else {
                 _ = try await APIService.shared.followUser(userId: detailPost.userId)
+            } else {
+                _ = try await APIService.shared.unfollowUser(userId: detailPost.userId)
             }
             
-            // 重新获取关注状态
-            let status = try await APIService.shared.getUserFollowStatus(userId: detailPost.userId)
-            
-            await MainActor.run {
-                withAnimation {
-                    // 将FollowStatus转换为Int
-                    switch status {
-                    case .notFollowing:
-                        followStatus = 1
-                    case .following:
-                        followStatus = 2
-                    case .followBack:
-                        followStatus = 3
-                    case .mutual:
-                        followStatus = 4
+            // 重新获取关注状态并刷新按钮；若获取状态失败则按请求方向保持已关注/未关注
+            do {
+                let status = try await APIService.shared.getUserFollowStatus(userId: detailPost.userId)
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        switch status {
+                        case .isSelf:
+                            followStatus = 0
+                        case .notFollowing:
+                            followStatus = 1
+                        case .following:
+                            followStatus = 2
+                        case .followBack:
+                            followStatus = 3
+                        case .mutual:
+                            followStatus = 4
+                        }
+                        isFollowing = status == .following || status == .followBack || status == .mutual
                     }
-                    isFollowing = status == .following || status == .followBack || status == .mutual
+                }
+            } catch {
+                // 关注/取关接口已成功，仅刷新状态失败：按当前 isFollowing 写回 followStatus，避免按钮回滚
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        followStatus = isFollowing ? 2 : 1
+                    }
                 }
             }
+        } catch let err as APIError {
+            if err.isAlreadyFollowedError {
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.2)) { isFollowing = true }
+                    followStatus = 2
+                }
+            } else {
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.2)) { isFollowing.toggle() }
+                }
+                print("Failed to toggle follow: \(err)")
+                CrashReporter.shared.logError(err, context: [
+                    "action": "toggleFollow",
+                    "userId": detailPost.userId
+                ])
+            }
         } catch {
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) { isFollowing.toggle() }
+            }
             print("Failed to toggle follow: \(error)")
             CrashReporter.shared.logError(error, context: [
                 "action": "toggleFollow",
@@ -1013,7 +1223,15 @@ struct PostDetailView: View {
             ))
         }
         
-        // 如果是本人帖子，显示个人主页置顶/取消置顶、删除
+        // 当前用户是管理员时，无论谁的帖子都显示管理入口
+        if isCurrentUserAdmin {
+            items.append(ActionSheetView.ActionItem(
+                title: "管理入口",
+                icon: "gearshape",
+                isDestructive: false
+            ))
+        }
+        // 本人帖子：个人主页置顶/取消置顶、删除
         if followStatus == 0 {
             items.append(ActionSheetView.ActionItem(
                 title: isPinned ? "取消个人主页置顶" : "个人主页置顶",
@@ -1076,6 +1294,9 @@ struct PostDetailView: View {
             Task {
                 await setUserProfilePin(detailPost, pin: false)
             }
+        case "管理入口":
+            // 管理入口：跳转或占位，后续可接入圈子管理页
+            break
         default:
             break
         }

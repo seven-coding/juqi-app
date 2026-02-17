@@ -60,6 +60,8 @@ npm run start:prod
 
 ### 云托管部署
 
+部署后 apiServer 将调用云函数 **appApiV201**（与 [服务端规划与命名规则](../docs/服务端规划与命名规则.md) 一致）。构建产物已就绪时，需在本地执行 `tcb framework deploy`（需先 `tcb login`）以更新云托管线上实例。
+
 1. 构建项目：`npm run build`
 2. **在云托管服务中配置环境变量**（必做，否则登录等接口会报 500）
    - 打开 [云开发控制台](https://console.cloud.tencent.com/tcb) → 云托管 → 找到 apiServer 对应服务
@@ -67,9 +69,10 @@ npm run start:prod
      - `CLOUD_BASE_ID` = 腾讯云「访问管理 → [API 密钥管理](https://console.cloud.tencent.com/cam/capi)」中的 **SecretId**
      - `CLOUD_BASE_KEY` = 上述密钥对应的 **SecretKey**
    - 必须使用 **SecretId/SecretKey**，不能使用云开发 API Key（JWT），否则会报错：`The SecretId doesn't exist or the token parameter in the temporary key is missing`
-3. 上传构建后的代码（包含 `dist` 目录）
-4. 配置启动命令：`node dist/main.js`
-5. 修改环境变量后需重新发布版本或重启服务使配置生效
+3. **直连策略**：以下 7 个接口固定走 apiServer 直连数据库（由代码内 `DIRECT_DB_OPERATIONS` 决定，**不再通过 MIGRATION_* 环境变量**按接口切换）：appGetCurrentUserProfile、appGetDynList、appGetDynDetail、appChargeDyn、appGetUnreadCount、appGetMessageList、appGetChatList。紧急回滚时可设置 `USE_CLOUD_FUNCTION_FALLBACK=true` 或调用 POST `/app/v2/migration/fallback` 使全部请求走云函数。
+4. 上传构建后的代码（包含 `dist` 目录）
+5. 配置启动命令：`node dist/main.js`
+6. 修改环境变量后需重新发布版本或重启服务使配置生效
 
 ## API接口
 
@@ -87,6 +90,12 @@ npm run start:prod
 ```
 
 注意：`source='v2'` 参数会自动添加，无需手动传递。
+
+### v201 直连策略
+
+- **原则**：直连清单由代码内 `DIRECT_DB_OPERATIONS` 固定，不按环境变量按接口切换；dataEnv 仅用于选库（test/prod）。
+- **已直连接口（仅以下 7 个）**：appGetCurrentUserProfile、appGetDynList、appGetDynDetail、appChargeDyn、appGetUnreadCount、appGetMessageList、appGetChatList。appLikeDyn、appSetMessage、appMarkMessagesRead 等其余接口走 appApiV201 云函数。
+- **测试环境**：测试环境部署清单（cloudbaserc.test.json）中不包含 getDynDetailV201、getMessagesNewV201、likeOrUnlikeV201、setMessageV201；上述 7 个直连接口在测试环境不依赖这些子云函数。
 
 ## 注意事项
 

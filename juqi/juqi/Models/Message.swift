@@ -25,6 +25,8 @@ struct Message: Identifiable, Codable {
     let url: String? // 跳转URL
     let chatId: String? // 聊天ID
     let dynId: String? // 动态ID
+    /// 1=文字 2=图片（对话消息）
+    let contentType: Int?
     
     // 从API返回的额外字段
     let user: [MessageUser]? // 用户信息
@@ -50,6 +52,7 @@ struct Message: Identifiable, Codable {
         case url
         case chatId
         case dynId
+        case contentType
         case user
         case circles
         case userInfo
@@ -87,6 +90,7 @@ struct Message: Identifiable, Codable {
         url = try container.decodeIfPresent(String.self, forKey: .url)
         chatId = try container.decodeIfPresent(String.self, forKey: .chatId)
         dynId = try container.decodeIfPresent(String.self, forKey: .dynId)
+        contentType = try container.decodeIfPresent(Int.self, forKey: .contentType)
         user = try container.decodeIfPresent([MessageUser].self, forKey: .user)
         circles = try container.decodeIfPresent([MessageCircle].self, forKey: .circles)
         userInfo = try container.decodeIfPresent([MessageUser].self, forKey: .userInfo)
@@ -112,6 +116,7 @@ struct Message: Identifiable, Codable {
         url: String?,
         chatId: String?,
         dynId: String?,
+        contentType: Int? = nil,
         user: [MessageUser]?,
         circles: [MessageCircle]?,
         userInfo: [MessageUser]?,
@@ -134,6 +139,7 @@ struct Message: Identifiable, Codable {
         self.url = url
         self.chatId = chatId
         self.dynId = dynId
+        self.contentType = contentType
         self.user = user
         self.circles = circles
         self.userInfo = userInfo
@@ -160,6 +166,7 @@ struct Message: Identifiable, Codable {
         try container.encodeIfPresent(url, forKey: .url)
         try container.encodeIfPresent(chatId, forKey: .chatId)
         try container.encodeIfPresent(dynId, forKey: .dynId)
+        try container.encodeIfPresent(contentType, forKey: .contentType)
         try container.encodeIfPresent(user, forKey: .user)
         try container.encodeIfPresent(circles, forKey: .circles)
         try container.encodeIfPresent(userInfo, forKey: .userInfo)
@@ -185,8 +192,21 @@ enum MessageTypeConstant {
 
 // MARK: - 消息展示格式化（首屏与分类页共用）
 extension Message {
-    /// 根据 type 生成 msgText 并补全 formatDate，供列表展示
+    /// 根据 type 生成 msgText 并补全 formatDate，供列表展示；私聊等聚合结果无顶层 fromName/fromPhoto 时从 user/userInfo 补全
     static func formatForDisplay(_ message: Message) -> Message {
+        var displayFromName = message.fromName
+        var displayFromPhoto = message.fromPhoto
+        if displayFromName.isEmpty || displayFromPhoto == nil {
+            if let u = message.user?.first {
+                if displayFromName.isEmpty { displayFromName = u.nickName ?? "未知" }
+                if displayFromPhoto == nil { displayFromPhoto = u.avatar }
+            }
+            if let u = message.userInfo?.first {
+                if displayFromName.isEmpty { displayFromName = u.nickName ?? "未知" }
+                if displayFromPhoto == nil { displayFromPhoto = u.avatar }
+            }
+            if displayFromName.isEmpty { displayFromName = "未知" }
+        }
         var msgText = message.msgText ?? message.message ?? ""
         switch message.type {
         case 1: msgText = "设置圈子信息"
@@ -218,13 +238,14 @@ extension Message {
                 msgText = infoMsg
             }
         case 19: msgText = "你的评论被点赞了"
+        case 20, 21, 22, 23: msgText = message.message ?? message.msgText ?? "申请/私信消息"
         default: msgText = message.message ?? message.msgText ?? ""
         }
         return Message(
             id: message.id,
             from: message.from,
-            fromName: message.fromName,
-            fromPhoto: message.fromPhoto,
+            fromName: displayFromName,
+            fromPhoto: displayFromPhoto,
             type: message.type,
             message: message.message,
             msgText: msgText,
@@ -237,6 +258,7 @@ extension Message {
             url: message.url,
             chatId: message.chatId,
             dynId: message.dynId,
+            contentType: message.contentType,
             user: message.user,
             circles: message.circles,
             userInfo: message.userInfo,

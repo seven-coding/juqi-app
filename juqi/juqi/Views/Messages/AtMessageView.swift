@@ -10,6 +10,9 @@ import SwiftUI
 struct AtMessageView: View {
     @State private var selectedTab: Int = 1 // 1=@我的帖子，2=@我的评论
     @StateObject private var viewModel: MessageCategoryViewModel
+    @State private var selectedDynId: String?
+    @State private var selectedUserId: String?
+    @State private var selectedSession: SessionDetailDestination?
     
     init() {
         _viewModel = StateObject(wrappedValue: MessageCategoryViewModel(messageType: MessageTypeConstant.at, aitType: 1))
@@ -45,8 +48,16 @@ struct AtMessageView: View {
             viewModel.loadMessages()
         }
         .onChange(of: selectedTab) { _, newValue in
-            // 切换Tab时重新加载
             viewModel.switchAitType(newValue)
+        }
+        .navigationDestination(item: $selectedDynId) { dynId in
+            PostDetailLoaderView(dynId: dynId)
+        }
+        .navigationDestination(item: $selectedUserId) { userId in
+            UserProfileView(userId: userId, userName: "")
+        }
+        .navigationDestination(item: $selectedSession) { s in
+            MessageDetailView(from: s.from, type: s.type, title: s.title, isChatMode: false)
         }
     }
     
@@ -109,7 +120,11 @@ struct AtMessageView: View {
                     AtMessageItemView(
                         message: message,
                         onViewTap: {
-                            // 跳转到帖子详情
+                            if let d = message.dynId, !d.isEmpty {
+                                selectedDynId = d
+                            } else {
+                                selectedUserId = message.from
+                            }
                         }
                     )
                     .onAppear {

@@ -93,9 +93,13 @@ extension View {
 
 // MARK: - Toast Manager
 class ToastManager: ObservableObject {
+    static let shared = ToastManager()
+    
     @Published var isPresented = false
     @Published var message = ""
     @Published var type: ToastView.ToastType = .info
+    
+    private init() {}
     
     func show(message: String, type: ToastView.ToastType = .info) {
         self.message = message

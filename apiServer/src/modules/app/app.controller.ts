@@ -28,6 +28,9 @@ export class AppController {
     const { operation, data, token, dataEnv = 'test' } = body;
 
     console.log(`[API] Request received - operation: ${operation}, hasToken: ${!!token}, hasData: ${!!data}, dataEnv: ${dataEnv}, openId: ${user.openId || 'none'}`);
+    if (operation === 'appGetDynList' || operation === 'appGetDynDetail') {
+      console.log(`[API] 排查 动态 - operation: ${operation}, body.dataEnv: ${dataEnv}, 将用于选库`);
+    }
 
     if (!operation) {
       console.log(`[API] Parameter validation failed - missing operation`);
@@ -72,9 +75,9 @@ export class AppController {
   }
 
   /**
-   * 更新迁移配置（仅开发环境）
+   * 更新迁移配置（仅允许改回滚开关，用于应急）
    * POST /app/v2/migration/config
-   * Body: { key: 'appGetCurrentUserProfile', value: true }
+   * Body: { key: 'useCloudFunctionFallback', value: true } 仅此 key 有效；直连清单由代码固定，不可按接口切换
    */
   @Post('migration/config')
   @SkipAuth()
@@ -87,25 +90,16 @@ export class AppController {
       return { code: 400, message: '缺少 key 参数' };
     }
 
-    const validKeys = [
-      'appGetCurrentUserProfile',
-      'appGetDynList',
-      'appGetUnreadCount',
-      'appGetMessageList',
-      'appGetChatList',
-    ];
-
-    if (!validKeys.includes(key)) {
-      return { code: 400, message: `无效的 key: ${key}` };
+    if (key === 'useCloudFunctionFallback') {
+      this.appService.setFallbackMode(!!value);
+      return {
+        code: 200,
+        message: 'success',
+        data: this.appService.getMigrationConfig(),
+      };
     }
 
-    this.appService.updateMigrationConfig(key as any, !!value);
-
-    return {
-      code: 200,
-      message: 'success',
-      data: this.appService.getMigrationConfig(),
-    };
+    return { code: 400, message: '仅支持 key=useCloudFunctionFallback 修改回滚开关，直连清单由 DIRECT_DB_OPERATIONS 固定' };
   }
 
   /**

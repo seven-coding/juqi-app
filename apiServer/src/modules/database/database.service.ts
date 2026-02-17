@@ -233,6 +233,12 @@ export class DatabaseService {
     try {
       const db = this.getDatabase(dataEnv);
       const result = await db.collection(collectionName).doc(id).update(update);
+      // Cloudbase SDK 在 API 报错时返回 { code, message } 而不抛错，需主动识别并抛出
+      if (result && typeof (result as any).code !== 'undefined' && (result as any).code !== 0) {
+        const errMsg = (result as any).message || 'database update failed';
+        console.error(`[DatabaseService] updateById API error:`, result);
+        throw new Error(errMsg);
+      }
       return (result.updated || 0) > 0;
     } catch (error) {
       console.error(`[DatabaseService] updateById error:`, error);

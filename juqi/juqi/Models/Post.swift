@@ -43,6 +43,8 @@ struct Post: Identifiable, Codable, Hashable {
     let mentionedUsers: [MentionedUser]?
     /// 是否已置顶到个人主页（仅本人动态有效）
     let isPinned: Bool?
+    /// 发布 IP 属地（合规展示，如「广东」，非完整 IP）
+    let ipLocation: String?
 
     /// 解码时对可能缺失的布尔字段使用默认值，兼容服务端 JSON 序列化省略 undefined 的情况
     init(from decoder: Decoder) throws {
@@ -76,6 +78,7 @@ struct Post: Identifiable, Codable, Hashable {
         musicInfo = try c.decodeIfPresent(MusicInfo.self, forKey: .musicInfo)
         mentionedUsers = try c.decodeIfPresent([MentionedUser].self, forKey: .mentionedUsers)
         isPinned = try c.decodeIfPresent(Bool.self, forKey: .isPinned)
+        ipLocation = try c.decodeIfPresent(String.self, forKey: .ipLocation)
     }
 
     /// 成员初始化器（用于 mock 与本地构造）
@@ -108,7 +111,8 @@ struct Post: Identifiable, Codable, Hashable {
         videoUrl: String? = nil,
         musicInfo: MusicInfo? = nil,
         mentionedUsers: [MentionedUser]? = nil,
-        isPinned: Bool? = nil
+        isPinned: Bool? = nil,
+        ipLocation: String? = nil
     ) {
         self.id = id
         self.userId = userId
@@ -139,6 +143,7 @@ struct Post: Identifiable, Codable, Hashable {
         self.videoUrl = videoUrl
         self.musicInfo = musicInfo
         self.isPinned = isPinned
+        self.ipLocation = ipLocation
     }
 
     struct LikeUser: Codable {
@@ -198,13 +203,15 @@ struct User: Identifiable, Codable {
 
 // MARK: - 关注状态枚举
 enum FollowStatus: Int, Codable {
-    case notFollowing = 1  // 未关注
+    case isSelf = 0         // 本人（不可关注）
+    case notFollowing = 1   // 未关注
     case following = 2      // 已关注
     case followBack = 3     // 回关
     case mutual = 4         // 互相关注
     
     var displayText: String {
         switch self {
+        case .isSelf: return ""
         case .notFollowing: return "关注"
         case .following: return "已关注"
         case .followBack: return "回关"
@@ -298,6 +305,8 @@ struct UserProfile: Identifiable, Codable {
     let isInvisible: Bool?
     /// 服务端明确返回的「是否本人」标识（如 GetCurrentUserProfile 返回 true），优先于 id==ownOpenId
     let isOwnProfileFromAPI: Bool?
+    /// 当前用户是否为管理员（用于动态详情等是否展示管理入口）
+    let admin: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -331,6 +340,7 @@ struct UserProfile: Identifiable, Codable {
         case blockedCount
         case isInvisible
         case isOwnProfileFromAPI = "isOwnProfile"
+        case admin
     }
     
     // 判断是否是自己：优先用服务端返回的 isOwnProfile，否则用 id == ownOpenId

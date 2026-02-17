@@ -1,14 +1,14 @@
 /**
- * 部署 getDynsListV2 云函数到测试环境
- * 使用方式: node deploy-getDynsListV2.js
+ * 部署 getDynsListV201 云函数（从 getDynsListV201 目录部署为 getDynsListV201）
+ * 使用方式: node deploy-getDynsListV2.js；或使用 deploy-all.js 统一部署
  */
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
 
 const rootDir = __dirname;
-const functionName = 'getDynsListV2';
-const functionPath = path.join(rootDir, functionName);
+const functionName = 'getDynsListV201';
+const functionPath = path.join(rootDir, 'getDynsListV201');
 
 // 加载环境变量
 function loadEnv() {
@@ -38,7 +38,7 @@ async function main() {
   loadEnv();
   
   console.log('========================================');
-  console.log(`部署 ${functionName} 到测试环境`);
+  console.log(`部署 ${functionName}（目录 getDynsListV201）`);
   console.log('========================================\n');
   
   if (!fs.existsSync(functionPath)) {

@@ -127,14 +127,32 @@ enum APIError: Error, Equatable {
         return m.contains("syntaxerror") || m.contains("functions execute fail")
     }
     
-    /// 是否需要重新登录
+    /// 是否需要重新登录（401 且非「已充电」等业务码时才视为登录失效）
     var requiresReauth: Bool {
         switch self {
-        case .tokenExpired, .apiError(401, _):
+        case .tokenExpired:
             return true
+        case .apiError(401, let msg):
+            return !msg.contains("点过") && !msg.contains("已充电")
         default:
             return false
         }
+    }
+    
+    /// 业务语义：接口返回「已关注该用户」等，前端视为成功并刷新状态即可
+    var isAlreadyFollowedError: Bool {
+        if case .apiError(400, let msg) = self {
+            return msg.contains("已关注")
+        }
+        return false
+    }
+    
+    /// 业务语义：充电接口返回「最近刚刚点过她哦」等，前端视为已充电并刷新状态即可
+    var isAlreadyChargedError: Bool {
+        if case .apiError(let code, let msg) = self {
+            return (code == 401 && (msg.contains("点过") || msg.contains("已充电"))) || (code == 400 && msg.contains("已充电"))
+        }
+        return false
     }
 }
 

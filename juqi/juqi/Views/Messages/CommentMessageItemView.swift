@@ -86,36 +86,39 @@ struct CommentMessageItemView: View {
                     .padding(.leading, 60)
             }
             
-            // 原帖子预览（带缩进）
+            // 原帖子预览（带缩进），点击跳转帖子/用户
             if let postPreview = message.messageInfo?.first?.message ?? message.riskControlReason {
-                VStack(alignment: .leading, spacing: 8) {
-                    // 预览内容框
-                    HStack(alignment: .top, spacing: 8) {
-                        // 左侧小方块（模拟缩略图）
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color(hex: "#1B1B1B"))
-                            .frame(width: 60, height: 60)
-                            .overlay(
-                                Text("预览")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(Color(hex: "#605D5D"))
-                            )
-                        
-                        // 预览文本
-                        Text(postPreview)
-                            .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "#605D5D"))
-                            .lineLimit(2)
+                Button(action: onViewTap) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 8) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color(hex: "#1B1B1B"))
+                                .frame(width: 60, height: 60)
+                                .overlay(
+                                    Text("预览")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(Color(hex: "#605D5D"))
+                                )
+                            Text(postPreview)
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(hex: "#605D5D"))
+                                .lineLimit(2)
+                            Spacer()
+                            Text("查看")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(hex: "#FF6B35"))
+                        }
+                        .padding(12)
+                        .background(Color(hex: "#1B1B1B").opacity(0.5))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color(hex: "#605D5D").opacity(0.3), lineWidth: 1)
+                        )
                     }
-                    .padding(12)
-                    .background(Color(hex: "#1B1B1B").opacity(0.5))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(hex: "#605D5D").opacity(0.3), lineWidth: 1)
-                    )
+                    .padding(.leading, 60)
                 }
-                .padding(.leading, 60)
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)

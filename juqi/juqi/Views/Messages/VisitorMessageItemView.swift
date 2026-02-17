@@ -9,9 +9,11 @@ import SwiftUI
 
 struct VisitorMessageItemView: View {
     let message: Message
+    var onTap: (() -> Void)?
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        Button(action: { onTap?() }) {
+            HStack(alignment: .top, spacing: 12) {
             // 头像
             LazyAsyncImage(url: message.fromPhoto) { image in
                 image
@@ -50,10 +52,12 @@ struct VisitorMessageItemView: View {
             Text(message.formatDate ?? message.createTime.formatMessageDate())
                 .font(.system(size: 12))
                 .foregroundColor(Color(hex: "#605D5D"))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .background(Color(hex: "#000000"))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
-        .background(Color(hex: "#000000"))
+        .buttonStyle(.plain)
         .overlay(
             Rectangle()
                 .fill(Color(hex: "#1B1B1B").opacity(0.3))

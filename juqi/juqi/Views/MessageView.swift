@@ -57,6 +57,7 @@ struct MessageView: View {
             .onAppear {
                 print("📤 [MessageView] onAppear 消息 tab 展示，触发 loadMessages（仅首次会请求）")
                 viewModel.loadMessages()
+                viewModel.refreshUnreadIfNeeded()
             }
             .navigationDestination(for: MessageNavDestination.self) { destination in
                 destinationView(for: destination)
@@ -70,6 +71,8 @@ struct MessageView: View {
         HStack(spacing: 0) {
             ForEach(viewModel.navItems) { item in
                 Button(action: {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
                     viewModel.onNavItemTap(item.id)
                     navigationPath.append(MessageNavDestination.category(item.id))
                 }) {
@@ -98,7 +101,9 @@ struct MessageView: View {
                             .foregroundColor(Color(hex: "#D6D0D0"))
                     }
                     .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)
@@ -113,11 +118,8 @@ struct MessageView: View {
                     MessageItemView(
                         message: message,
                         onTap: {
-                            navigationPath.append(MessageNavDestination.detail(
-                                from: message.from,
-                                type: message.groupId ?? message.groupType ?? message.type,
-                                title: message.fromName
-                            ))
+                            let dest = Self.destination(for: message)
+                            navigationPath.append(dest)
                         },
                         onMarkRead: {
                             viewModel.markAsRead(message: message, index: index)
@@ -152,6 +154,27 @@ struct MessageView: View {
         }
     }
     
+    // MARK: - 首屏消息点击路由（与小程序一致：type 20-23→对话页，16/17或groupId=6→关注页，其余→会话详情）
+    private static func destination(for message: Message) -> MessageNavDestination {
+        let from = message.from
+        let title = message.fromName
+        if message.type == 20 || message.type == 21 || message.type == 22 || message.type == 23 {
+            return .chat(
+                from: from,
+                type: 10,
+                title: title,
+                messageTypeId: message.id,
+                chatId: message.chatId,
+                fromPhoto: message.fromPhoto
+            )
+        }
+        if message.type == 16 || message.type == 17 || message.groupId == 6 {
+            return .detail(from: from, type: 6, title: title)
+        }
+        let type = message.groupId ?? message.groupType ?? message.type
+        return .detail(from: from, type: type, title: title)
+    }
+    
     // MARK: - 导航目标视图
     
     @ViewBuilder
@@ -167,11 +190,15 @@ struct MessageView: View {
                 AtMessageView()
             case 3:
                 VisitorMessageView()
+            case 4:
+                ApplyMessageView()
             default:
                 EmptyView()
             }
         case .detail(let from, let type, let title):
-            MessageDetailView(from: from, type: type, title: title)
+            MessageDetailView(from: from, type: type, title: title, isChatMode: false)
+        case .chat(let from, let type, let title, let messageTypeId, let chatId, let fromPhoto):
+            MessageChatView(from: from, type: type, title: title, messageTypeId: messageTypeId ?? "", chatId: chatId ?? "", fromPhoto: fromPhoto)
         }
     }
 }
@@ -191,11 +218,20 @@ struct MessageLoadFailedView: View {
             Text(message ?? "加载失败")
                 .font(.system(size: 16))
                 .foregroundColor(Color(hex: "#D6D0D0"))
-            Button("重试", action: onRetry)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(Color(hex: "#FF6B35"))
-                .padding(.horizontal, 24)
-                .padding(.vertical, 10)
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                onRetry()
+            }) {
+                Text("重试")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(Color(hex: "#FF6B35"))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             Spacer()
         }
     }
@@ -203,9 +239,13 @@ struct MessageLoadFailedView: View {
 
 // MARK: - 导航目标枚举
 
+/// 首屏消息点击后的目标：会话详情（只读列表）或申请/私信对话页
 enum MessageNavDestination: Hashable {
     case category(Int) // 分类页面ID
-    case detail(from: String, type: Int, title: String) // 详情页
+    /// 会话消息列表（getMessagesNew type+from），只读，每条可点进动态/用户
+    case detail(from: String, type: Int, title: String)
+    /// 申请/私信对话页（type 20-23），调 chat 接口，有输入框
+    case chat(from: String, type: Int, title: String, messageTypeId: String?, chatId: String?, fromPhoto: String?)
 }
 
 // MARK: - 消息项视图

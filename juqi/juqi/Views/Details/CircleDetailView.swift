@@ -13,6 +13,8 @@ struct CircleDetailView: View {
 
     @State private var displayTitle: String = ""
     @State private var circleDetail: CircleItem? = nil
+    /// 用户在该电站的加入状态：0 未加入 1 申请中 2 已加入（用于发布权限校验）
+    @State private var circleFollowStatus: Int? = nil
     @State private var posts: [Post] = []
     @State private var hasMore = true
     @State private var publicTime: Double? = nil
@@ -22,6 +24,7 @@ struct CircleDetailView: View {
     @State private var selectedPostForDetail: Post? = nil
     @State private var selectedUserId: String? = nil
     @State private var selectedTopicName: String? = nil
+    @State private var showPublishSheet = false
 
     private let limit = 20
 
@@ -48,6 +51,22 @@ struct CircleDetailView: View {
         .navigationTitle("电站")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("发布") {
+                    handlePublishTap()
+                }
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(Color(hex: "#FF6B35"))
+            }
+        }
+        .fullScreenCover(isPresented: $showPublishSheet) {
+            PublishView(
+                activeTab: .constant(.discover),
+                initialCircleId: circleId,
+                initialCircleTitle: circleDetail?.title ?? circleTitle ?? (displayTitle.isEmpty ? nil : displayTitle)
+            )
+        }
         .task {
             await loadDetailAndFeed()
         }
@@ -267,6 +286,22 @@ struct CircleDetailView: View {
             .frame(height: 0.5)
     }
 
+    /// 点击发布：校验电站发布权限（仅限成员发帖时需已加入），无权限 toast，有权限打开发布页并带入电站名
+    /// 无权限规则：isMemberPublic==true 且 followStatus!=2 → 无权限；否则有权限
+    private func handlePublishTap() {
+        guard let circle = circleDetail else {
+            ToastManager.shared.error("请稍候，加载完成后再发布")
+            return
+        }
+        let needMember = circle.isMemberPublic == true
+        let isMember = (circleFollowStatus ?? 0) == 2
+        if needMember && !isMember {
+            ToastManager.shared.error("本电站仅限成员才可发帖")
+            return
+        }
+        showPublishSheet = true
+    }
+
     private func fullScreenErrorView(_ error: APIError) -> some View {
         EmptyStateView(
             icon: error.iconName,
@@ -294,6 +329,7 @@ struct CircleDetailView: View {
             await MainActor.run {
                 circleDetail = detail.circle
                 displayTitle = detail.circle?.title ?? circleTitle ?? "电站"
+                circleFollowStatus = detail.followStatus
             }
         } catch let err as APIError {
             await MainActor.run { detailError = err }

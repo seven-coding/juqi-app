@@ -172,12 +172,32 @@ App 客户端 → apiServer → appApi 云函数 → 本目录内各云函数（
 2. **所需环境变量**（可写在 `apiServer/.env` 或 `cloudfunctions/.env`，脚本会自动加载）：
    - `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY`（或 apiServer 中的 `CLOUD_BASE_ID`、`CLOUD_BASE_KEY`）：腾讯云密钥，用于**补建**与**上传代码**，**无需小程序 AppID**（与测试环境其它云函数创建方式一致）。
    - 可选：若使用微信 Open API 补建，可配置 `WX_APPID`、`WX_SECRET`。
-3. **执行**：
-   ```bash
-   cd JUQI-APP/cloudfunctions
-   node run-full-deploy.js
-   ```
-4. 脚本会先调用微信云开发 Open API 为 `cloudbaserc.json` 中列出、但环境中不存在的函数「建壳」，再按列表逐个上传代码（含各目录 `npm install`）。仅部署本项目，不依赖 JUQI-小程序。
+3. **执行**（默认测试环境）：
+   - **最小部署（默认）**：仅部署 **git 有改动的云函数**，不补建、不部署未改动函数。
+     ```bash
+     cd JUQI-APP/cloudfunctions
+     node run-full-deploy.js
+     ```
+   - **全量部署**：补建缺失云函数并部署全部。仅在明确需要时使用：
+     ```bash
+     node run-full-deploy.js full
+     # 或
+     DEPLOY_FULL=1 node run-full-deploy.js
+     ```
+   - **仅部署指定函数**：`DEPLOY_ONLY=getDynDetailV201,appApiV201 node run-full-deploy.js`
+4. 仅部署本项目云函数，不依赖 JUQI-小程序。全量时才会先补建再按列表逐个上传；最小部署时只上传有改动的函数。
+
+### 测试环境 V2 命名部署
+
+测试环境可将所有云函数部署为带 `V2` 后缀的名称（如 `appApiV2`、`getMessagesNewV2`），与正式环境原名区分，便于同环境内测与正式隔离。
+
+- **配置**：使用 `cloudbaserc.test.json`（已包含全部 xxxV2 函数名，getDynsListV2、likeOrUnlikeV2 保持不变）。
+- **执行**：
+  ```bash
+  cd JUQI-APP/cloudfunctions
+  DEPLOY_ENV=test node deploy-all.js
+  ```
+- **说明**：部署后 apiServer 会调用 `appApiV2`；各云函数内部通过 `TCB_ENV_ID` 判断环境，在测试环境中互调时使用 xxxV2 名称。正式环境仍使用 `cloudbaserc.json` 部署原名，小程序不受影响。
 
 ### 仅补建云函数（不上传代码）
 

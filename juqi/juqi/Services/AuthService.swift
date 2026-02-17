@@ -8,6 +8,12 @@
 import Foundation
 import Combine
 
+/// appRefreshToken 接口返回的 data 结构
+struct RefreshTokenData: Codable {
+    let token: String
+    let refreshed: Bool
+}
+
 /// 认证服务，管理登录状态和Token
 class AuthService: ObservableObject {
     static let shared = AuthService()
@@ -73,6 +79,8 @@ class AuthService: ObservableObject {
                 currentUserStatus = data.userStatus
                 // 确保状态为已认证
                 authState = .authenticated
+                // 启动时刷新 token，减少后续请求因过期被拒；不 await 避免阻塞启动
+                Task { @MainActor in await refreshTokenAtLaunch() }
             } else {
                 // Token无效，清除登录状态
                 logout()
@@ -94,7 +102,28 @@ class AuthService: ObservableObject {
     func saveToken(_ token: String) {
         self.token = token
         NetworkService.shared.setToken(token)
-            _ = KeychainHelper.saveToken(token)
+        _ = KeychainHelper.saveToken(token)
+    }
+    
+    /// 启动时调用 appRefreshToken，在 token 有效或即将过期时换新 token，减少后续请求因过期被拒
+    @MainActor
+    private func refreshTokenAtLaunch() async {
+        guard token != nil else { return }
+        do {
+            let data: RefreshTokenData = try await NetworkService.shared.request(
+                operation: "appRefreshToken",
+                data: [:],
+                needsToken: true,
+                useCache: false
+            )
+            saveToken(data.token)
+            if data.refreshed {
+                print("🔄 [Token] Refreshed at launch")
+            }
+        } catch {
+            // 刷新失败不登出，后续请求仍用旧 token
+            print("⚠️ [Token] Refresh at launch failed: \(error)")
+        }
     }
     
     /// 登录（微信授权后调用）

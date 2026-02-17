@@ -7,8 +7,18 @@
 
 import SwiftUI
 
+/// 用于导航到会话详情页的参数
+struct SessionDetailDestination: Hashable {
+    let from: String
+    let type: Int
+    let title: String
+}
+
 struct CommentMessageView: View {
     @StateObject private var viewModel = MessageCategoryViewModel(messageType: MessageTypeConstant.comment)
+    @State private var selectedDynId: String?
+    @State private var selectedUserId: String?
+    @State private var selectedSession: SessionDetailDestination?
     
     var body: some View {
         ZStack {
@@ -34,6 +44,15 @@ struct CommentMessageView: View {
         .onAppear {
             viewModel.loadMessages()
         }
+        .navigationDestination(item: $selectedDynId) { dynId in
+            PostDetailLoaderView(dynId: dynId)
+        }
+        .navigationDestination(item: $selectedUserId) { userId in
+            UserProfileView(userId: userId, userName: "")
+        }
+        .navigationDestination(item: $selectedSession) { s in
+            MessageDetailView(from: s.from, type: s.type, title: s.title, isChatMode: false)
+        }
     }
     
     private var messageList: some View {
@@ -43,21 +62,27 @@ struct CommentMessageView: View {
                     CommentMessageItemView(
                         message: message,
                         onReplyTap: {
-                            // 回复评论
+                            selectedSession = SessionDetailDestination(
+                                from: message.from,
+                                type: message.groupId ?? message.groupType ?? message.type,
+                                title: message.fromName
+                            )
                         },
                         onViewTap: {
-                            // 跳转到帖子详情
+                            if let d = message.dynId, !d.isEmpty {
+                                selectedDynId = d
+                            } else {
+                                selectedUserId = message.from
+                            }
                         }
                     )
                     .onAppear {
-                        // 加载更多
                         if index == viewModel.messages.count - 1 && !viewModel.allLoaded {
                             viewModel.loadMore()
                         }
                     }
                 }
                 
-                // 加载更多指示器
                 if viewModel.isLoading && !viewModel.messages.isEmpty {
                     HStack {
                         Spacer()

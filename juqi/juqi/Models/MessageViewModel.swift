@@ -20,7 +20,8 @@ class MessageViewModel: ObservableObject {
         MessageNavItem(id: 0, title: "充电", icon: "bolt.fill", count: 0, url: nil),
         MessageNavItem(id: 1, title: "评论", icon: "bubble.left.and.bubble.right", count: 0, url: nil),
         MessageNavItem(id: 2, title: "艾特", icon: "at", count: 0, url: nil),
-        MessageNavItem(id: 3, title: "访客", icon: "person.fill", count: 0, url: nil)
+        MessageNavItem(id: 3, title: "访客", icon: "person.fill", count: 0, url: nil),
+        MessageNavItem(id: 4, title: "申请", icon: "envelope.fill", count: 0, url: nil)
     ]
     
     private var page = 1
@@ -97,6 +98,11 @@ class MessageViewModel: ObservableObject {
         }
     }
 
+    /// Tab 再次出现时刷新未读角标（onShow 刷新策略）
+    func refreshUnreadIfNeeded() {
+        fetchUnreadCountIfNeeded()
+    }
+    
     /// 未读数：缓存有效则用缓存，否则请求 appGetUnreadCount 并更新角标与缓存
     private func fetchUnreadCountIfNeeded() {
         if let cached = cachedNotReadCount, let last = lastUnreadFetchTime, Date().timeIntervalSince(last) < unreadCacheInterval {
@@ -188,6 +194,7 @@ class MessageViewModel: ObservableObject {
                         url: m.url,
                         chatId: m.chatId,
                         dynId: m.dynId,
+                        contentType: m.contentType,
                         user: m.user,
                         circles: m.circles,
                         userInfo: m.userInfo,
@@ -235,7 +242,7 @@ class MessageViewModel: ObservableObject {
     
     // MARK: - 私有方法
 
-    /// 更新未读数量
+    /// 更新未读数量（申请 type 10 未读暂无独立接口，保持 0）
     private func updateNotReadCount(_ notReadCount: MessageNotReadCount) {
         navItems[0].count = notReadCount.chargeNums.total
         navItems[1].count = notReadCount.commentNums.total

@@ -1,0 +1,117 @@
+{
+  "version": "2.0",
+  "envId": "test-juqi-3g1m5qa7cc2737a1",
+  "region": "ap-shanghai",
+  "functionRoot": ".",
+  "functions": [
+    {
+      "name": "appApiV201",
+      "timeout": 60,
+      "runtime": "Nodejs16.13",
+      "installDependency": true,
+      "handler": "index.main"
+    },
+    {
+      "name": "getDynsListV201",
+      "timeout": 60,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "publishDynV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "delDynV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "getCircleV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "getCircleDetailV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "getTopicV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "setTopicV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "setJoinCircleV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "getRearchV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "loginV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "commonRequestV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "getUserAboutV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "chargeHerV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "setUserV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "updateUserInfoV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "getUserListV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    },
+    {
+      "name": "setUserInfoV201",
+      "timeout": 30,
+      "runtime": "Nodejs16.13",
+      "installDependency": true
+    }
+  ]
+}

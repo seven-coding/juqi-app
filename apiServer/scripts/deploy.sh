@@ -55,5 +55,6 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}   部署完成!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
+# 部署后请求将转发至云函数 appApiV201
 echo -e "API 地址: https://test-juqi-3g1m5qa7cc2737a1.ap-shanghai.tcb-api.tencentcloudapi.com/app/v2"
 echo ""

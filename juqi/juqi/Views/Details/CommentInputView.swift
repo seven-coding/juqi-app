@@ -19,6 +19,8 @@ struct CommentInputView: View {
     @State private var errorMessage = ""
     @State private var selectedImage: UIImage? = nil
     @State private var showImagePicker = false
+    @State private var pendingImageForConfirm: UIImage?
+    @State private var showImageConfirmSheet = false
     @State private var isUploadingImage = false
     @State private var showUserSelector = false
     @State private var showEmojiPicker = false
@@ -164,13 +166,16 @@ struct CommentInputView: View {
                     set: { newValue in
                         if let newValue = newValue {
                             Task {
-                                await loadImage(from: newValue)
+                                await loadImageForConfirm(from: newValue)
                             }
                         }
                     }
                 ),
                 matching: .images
             )
+            .sheet(isPresented: $showImageConfirmSheet) {
+                imageConfirmSheet
+            }
             .overlay(
                 // 用户选择器和表情选择器
                 VStack {
@@ -221,14 +226,50 @@ struct CommentInputView: View {
         }
     }
     
-    private func loadImage(from item: PhotosPickerItem) async {
+    /// 相册选图后仅加载并弹出确认，确认后再填入评论
+    private func loadImageForConfirm(from item: PhotosPickerItem) async {
         guard let data = try? await item.loadTransferable(type: Data.self),
               let image = UIImage(data: data) else {
             return
         }
-        
         await MainActor.run {
-            selectedImage = image
+            pendingImageForConfirm = image
+            showImageConfirmSheet = true
+        }
+    }
+    
+    /// 相册选图确认弹窗：预览 + 确认 / 取消
+    private var imageConfirmSheet: some View {
+        NavigationStack {
+            ZStack {
+                Color(hex: "#000000").ignoresSafeArea()
+                if let image = pendingImageForConfirm {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .padding()
+                }
+            }
+            .navigationTitle("使用图片")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        pendingImageForConfirm = nil
+                        showImageConfirmSheet = false
+                    }
+                    .foregroundColor(Color(hex: "#71767A"))
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("确认") {
+                        selectedImage = pendingImageForConfirm
+                        pendingImageForConfirm = nil
+                        showImageConfirmSheet = false
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Color(hex: "#FF6B35"))
+                }
+            }
         }
     }
     

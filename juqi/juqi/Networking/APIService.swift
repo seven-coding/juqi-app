@@ -834,6 +834,38 @@ class APIService {
         )
     }
     
+    /// 申请/私信对话页：拉取 messageChat（type 20-23）
+    func getChatMessages(chatId: String, chatOpenId: String, messageTypeId: String?, page: Int = 1, limit: Int = 20) async throws -> MessageListResponse {
+        var data: [String: Any] = [
+            "type": 6,
+            "chatId": chatId,
+            "chatOpenId": chatOpenId,
+            "page": page,
+            "limit": limit
+        ]
+        if let mid = messageTypeId { data["messageTypeId"] = mid }
+        return try await NetworkService.shared.request(
+            operation: "chat",
+            data: data,
+            useCache: false
+        )
+    }
+    
+    /// 申请/私信对话页：发送一条消息（文字或图片 URL）
+    /// - Parameter contentType: 1=文字 2=图片（message 为图片 URL）
+    func sendChatMessage(chatId: String, to: String, message: String, contentType: Int = 1) async throws -> EmptyResponse {
+        return try await NetworkService.shared.request(
+            operation: "appSendChatMessage",
+            data: [
+                "chatId": chatId,
+                "to": to,
+                "message": message,
+                "contentType": contentType
+            ],
+            useCache: false
+        )
+    }
+    
     /// 获取未读消息数（独立接口，可短时缓存以减少首屏依赖）
     func getUnreadCount() async throws -> MessageNotReadCount {
         struct UnreadResponse: Codable {

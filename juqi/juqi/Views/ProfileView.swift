@@ -19,7 +19,6 @@ struct ProfileView: View {
     @State private var isLoading = true
     @State private var showSettings = false
     @State private var showPersonalizationSettings = false
-    @State private var showInviteFriends = false
     @State private var showLobby = false
     @State private var showAbout = false
     @State private var navigateToUserProfile: ProfileDestination?
@@ -29,11 +28,17 @@ struct ProfileView: View {
     @State private var showFavoriteList = false
     @State private var showBlackList = false
     @State private var showQRCode = false
+    @State private var showChargeTips = false
     @State private var showAvatarActionSheet = false
     @State private var showImagePicker = false
     @State private var selectedAvatar: UIImage?
     @State private var imageSourceType: UIImagePickerController.SourceType = .photoLibrary
     @State private var isUploadingAvatar = false
+    /// 加载资料失败时展示 EmptyState + 重试
+    @State private var lastError: APIError?
+    /// 头像上传失败 Toast
+    @State private var showAvatarErrorToast = false
+    @State private var avatarErrorToastMessage = ""
 
     private let themeOrange = Color(hex: "#FF6B35")
     private let secondaryText = Color(hex: "#71767A") // 更克制的灰色
@@ -46,33 +51,64 @@ struct ProfileView: View {
             RadialGradient(colors: [themeOrange.opacity(0.08), .clear], center: .topLeading, startRadius: 0, endRadius: 400)
                 .ignoresSafeArea()
             
-            if isLoading {
-                ProgressView().tint(themeOrange)
-            } else {
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 44) {
-                        // 1. 个人头部：极致紧凑
-                        headerSection(profile: userProfile)
-                            .padding(.top, 32)
-                        
-                        // 2. 核心数据：单行贯通式设计
-                        statsGrid(profile: userProfile)
-                        
-                        // 3. 菜单列表：通透式列表
-                        actionGroup
-                    }
-                    .padding(.bottom, 120)
+            // 固定布局始终展示，仅数据刷新（profile 为 nil 时显示占位文案与 0）
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 44) {
+                    headerSection(profile: userProfile)
+                        .padding(.top, 32)
+                    statsGrid(profile: userProfile)
+                    actionGroup
                 }
-                .refreshable { await loadUserProfile() }
+                .padding(.bottom, 120)
+            }
+            .scrollIndicators(.never, axes: .vertical)
+            .refreshable { await loadUserProfile() }
+            .overlay {
+                // 首次加载失败且无数据时展示错误态 + 重试
+                if let error = lastError, userProfile == nil {
+                    EmptyStateView(
+                        icon: error.iconName,
+                        title: "加载失败",
+                        message: error.userMessage,
+                        actionTitle: "重试",
+                        iconColor: .red.opacity(0.8),
+                        action: {
+                            lastError = nil
+                            Task { await loadUserProfile() }
+                        }
+                    )
+                }
+            }
+            .overlay(alignment: .top) {
+                // 数据刷新中且未失败时，顶部轻量提示
+                if isLoading && userProfile == nil && lastError == nil {
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.8).tint(themeOrange)
+                        Text("加载中…").font(.system(size: 13)).foregroundColor(secondaryText)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(8)
+                    .padding(.top, 12)
+                }
             }
         }
         .task { await loadUserProfile() }
+        .onChange(of: showSettings) { _, newValue in
+            if !newValue { Task { await loadUserProfile() } }
+        }
+        .onChange(of: showPersonalizationSettings) { _, newValue in
+            if !newValue { Task { await loadUserProfile() } }
+        }
+        .onChange(of: showAbout) { _, newValue in
+            if !newValue { Task { await loadUserProfile() } }
+        }
         .navigationDestination(item: $navigateToUserProfile) { dest in
             UserProfileView(userId: dest.userId, userName: userProfile?.userName ?? "匿名用户", isOwnProfile: dest.isOwn)
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .sheet(isPresented: $showPersonalizationSettings) { PersonalizationSettingsView() }
-        .sheet(isPresented: $showInviteFriends) { InviteFriendsView() }
         .sheet(isPresented: $showLobby) { LobbyView() }
         .sheet(isPresented: $showAbout) { AboutView() }
         .sheet(isPresented: $showFollowList) {
@@ -105,24 +141,19 @@ struct ProfileView: View {
                 QRCodeView(userId: userId)
             }
         }
-        .actionSheet(isPresented: $showAvatarActionSheet) {
-            var buttons: [ActionSheet.Button] = [
-                .default(Text("从相册选择")) {
-                    imageSourceType = .photoLibrary
-                    showImagePicker = true
-                }
-            ]
-            
+        .sheet(isPresented: $showChargeTips) { ChargeTipsView() }
+        .confirmationDialog("选择头像", isPresented: $showAvatarActionSheet, titleVisibility: .visible) {
+            Button("从相册选择") {
+                imageSourceType = .photoLibrary
+                showImagePicker = true
+            }
             if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                buttons.append(.default(Text("拍照")) {
+                Button("拍照") {
                     imageSourceType = .camera
                     showImagePicker = true
-                })
+                }
             }
-            
-            buttons.append(.cancel())
-            
-            return ActionSheet(title: Text("选择头像"), buttons: buttons)
+            Button("取消", role: .cancel) {}
         }
         .sheet(isPresented: $showImagePicker) {
             AvatarImagePicker(image: $selectedAvatar, sourceType: imageSourceType, isPresented: $showImagePicker)
@@ -134,6 +165,7 @@ struct ProfileView: View {
                 }
             }
         }
+        .toast(isPresented: $showAvatarErrorToast, message: avatarErrorToastMessage, type: .error)
     }
     
     // MARK: - 个人头部：高对比排版
@@ -192,7 +224,7 @@ struct ProfileView: View {
                 Button(action: {
                     showSettings = true
                 }) {
-                    Text(profile?.signature?.isEmpty == false ? profile!.signature! : "既难飞至，则必跋涉")
+                    Text(profile?.signature?.isEmpty == false ? profile!.signature! : "点击编辑个性签名")
                         .font(.system(size: 14))
                         .foregroundColor(secondaryText)
                         .lineLimit(1)
@@ -249,9 +281,20 @@ struct ProfileView: View {
                         navigateToUserProfile = ProfileDestination(userId: uid, isOwn: true)
                     }
                 }
-                statBox(title: "电量", value: "\(profile?.chargeNums ?? 0)") {
-                    showChargeList = true
+                ZStack(alignment: .topTrailing) {
+                    statBox(title: "电量", value: "\(profile?.chargeNums ?? 0)") {
+                        showChargeList = true
+                    }
+                    Button(action: { showChargeTips = true }) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 14))
+                            .foregroundColor(secondaryText)
+                    }
+                    .padding(.top, 4)
+                    .padding(.trailing, 8)
+                    .accessibilityLabel("电量说明")
                 }
+                .frame(maxWidth: .infinity)
                 statBox(title: "关注", value: "\(profile?.followCount ?? 0)") {
                     showFollowList = true
                 }
@@ -264,9 +307,7 @@ struct ProfileView: View {
                 statBox(title: "收藏", value: "\(profile?.collectionCount ?? 0)") {
                     showFavoriteList = true
                 }
-                statBox(title: "邀请", value: "\(profile?.inviteCount ?? 0)") {
-                    showInviteFriends = true
-                }
+                statBox(title: "邀请", value: "\(profile?.inviteCount ?? 0)")
                 statBox(title: "拉黑", value: "\(profile?.blockedCount ?? 0)") {
                     showBlackList = true
                 }
@@ -299,12 +340,26 @@ struct ProfileView: View {
     private var actionGroup: some View {
         VStack(spacing: 0) {
             menuRow(icon: "person.crop.circle", title: "资料设置", subtitle: "编辑你的个人资料") { showSettings = true }
+            menuRowDivider()
             menuRow(icon: "circle.grid.cross", title: "个性化设置", subtitle: "定制你的冲浪偏好") { showPersonalizationSettings = true }
-            menuRow(icon: "person.2", title: "邀请好友", subtitle: "我们推荐 多人") { showInviteFriends = true }
+            menuRowDivider()
             menuRow(icon: "tent", title: "橘气大厅", subtitle: "自助冲浪入口") { showLobby = true }
+            menuRowDivider()
             menuRow(icon: "info.circle", title: "关于橘气", subtitle: "橘气说明书") { showAbout = true }
         }
         .padding(.horizontal, 20)
+    }
+    
+    /// 菜单行之间的横向分割线（在行与行之间，不压在 icon 下方）
+    private func menuRowDivider() -> some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: 44)
+            Rectangle()
+                .fill(Color.white.opacity(0.05))
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
+        }
+        .frame(height: 1)
     }
     
     private func menuRow(icon: String, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
@@ -332,18 +387,21 @@ struct ProfileView: View {
             }
             .padding(.vertical, 20)
             .background(Color.black)
-            .overlay(
-                Divider().background(Color.white.opacity(0.05)), alignment: .bottom
-            )
         }
         .buttonStyle(PlainButtonStyle())
     }
 
     private func loadUserProfile() async {
+        lastError = nil
         isLoading = true
         do {
             userProfile = try await APIService.shared.getCurrentUserProfile()
         } catch {
+            if let apiError = error as? APIError {
+                lastError = apiError
+            } else {
+                lastError = .unknown
+            }
             print("Failed to load user profile: \(error)")
         }
         isLoading = false
@@ -355,10 +413,11 @@ struct ProfileView: View {
             let avatarUrl = try await APIService.shared.uploadImage(image: image)
             let data: [String: Any] = ["avatar": avatarUrl]
             _ = try await APIService.shared.updateUserInfo(data: data)
-            // 重新加载用户信息
             await loadUserProfile()
-            selectedAvatar = nil // 清空临时选择
+            selectedAvatar = nil
         } catch {
+            avatarErrorToastMessage = (error as? APIError)?.userMessage ?? "头像上传失败，请重试"
+            showAvatarErrorToast = true
             print("Failed to upload avatar: \(error)")
         }
         isUploadingAvatar = false
@@ -397,28 +456,134 @@ struct LobbyView: View {
 
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
+    private let themeOrange = Color(hex: "#FF6B35")
+    private let secondaryText = Color(hex: "#71767A")
+    
+    #if DEBUG
+    @AppStorage("AppConfig.dataEnv") private var dataEnv = "test"
+    #endif
+    
+    private var appVersion: String {
+        let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "版本 \(short) (\(build))"
+    }
     
     var body: some View {
         NavigationView {
             ZStack {
                 Color.black.ignoresSafeArea()
-                Text("关于橘气")
-                    .foregroundColor(.white)
-                    .font(.headline)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 32) {
+                        // 品牌区：图标 + 名称 + 版本
+                        VStack(spacing: 16) {
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(themeOrange.opacity(0.2))
+                                .frame(width: 76, height: 76)
+                                .overlay(
+                                    Image(systemName: "leaf.circle.fill")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(themeOrange)
+                                )
+                            Text("橘气")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundColor(.white)
+                            Text(appVersion)
+                                .font(.system(size: 14))
+                                .foregroundColor(secondaryText)
+                        }
+                        .padding(.top, 24)
+                        
+                        // 功能列表：白底卡片风格（深色主题下用深色卡片）
+                        VStack(spacing: 0) {
+                            aboutRow(title: "给个好评") {
+                                if let url = URL(string: "https://apps.apple.com/app/idXXXXXXXX") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            aboutDivider()
+                            aboutRow(title: "用户协议") {
+                                if let url = URL(string: "https://www.juqi.life/terms") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            aboutDivider()
+                            aboutRow(title: "隐私政策") {
+                                if let url = URL(string: "https://www.juqi.life/privacy") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                        }
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 20)
+                        
+                        #if DEBUG
+                        // 隐藏选项（仅调试）
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("隐藏选项")
+                                .font(.system(size: 13))
+                                .foregroundColor(secondaryText)
+                            Picker("数据环境", selection: $dataEnv) {
+                                Text("测试数据").tag("test")
+                                Text("线上数据").tag("prod")
+                            }
+                            .pickerStyle(.segmented)
+                            .onChange(of: dataEnv) { _, newValue in
+                                CacheService.shared.clearResponseCache()
+                                NotificationCenter.default.post(name: NSNotification.Name("DataEnvDidChange"), object: nil)
+                                print("🔄 [About] 数据环境切换为: \(newValue)，已清除 API 缓存并通知首页清空列表")
+                                // 排查：确认写入后读回一致
+                                let readBack = UserDefaults.standard.string(forKey: "AppConfig.dataEnv") ?? "nil"
+                                print("🔍 [排查] 切换后 UserDefaults.dataEnv=\(readBack), AppConfig.dataEnv=\(AppConfig.dataEnv)")
+                            }
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 20)
+                        #endif
+                    }
+                    .padding(.bottom, 40)
+                }
             }
-            .navigationTitle("关于橘气")
+            .navigationTitle("关于")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .foregroundColor(.white)
-                            .font(.system(size: 16, weight: .medium))
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("完成") {
+                        dismiss()
                     }
+                    .foregroundColor(themeOrange)
+                    .font(.system(size: 16, weight: .medium))
                 }
             }
         }
         .toolbar(.hidden, for: .tabBar)
+    }
+    
+    private func aboutRow(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 16))
+                    .foregroundColor(.white)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private func aboutDivider() -> some View {
+        Divider()
+            .background(Color.white.opacity(0.08))
+            .padding(.leading, 16)
     }
 }
 

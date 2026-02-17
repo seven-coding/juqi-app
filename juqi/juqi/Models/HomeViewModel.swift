@@ -28,6 +28,9 @@ class HomeViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var lastError: APIError? = nil
     
+    /// 上次成功加载列表时的 dataEnv，用于进入首页时检测环境是否切换并强制刷新
+    @Published var lastLoadedDataEnv: String? = nil
+    
     // 滚动位置存储（使用 Post ID 作为锚点）
     private var scrollPositions: [HomeCategory: String] = [:]
     
@@ -43,6 +46,17 @@ class HomeViewModel: ObservableObject {
                     self.selectedCategory = .latest
                     _ = await self.refreshPosts()
                 }
+            }
+            .store(in: &cancellables)
+        
+        // 监听数据环境切换：清空内存列表，使返回首页时 loadInitialData 会重新请求
+        NotificationCenter.default.publisher(for: NSNotification.Name("DataEnvDidChange"))
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                self.categoryData = [:]
+                self.lastLoadedDataEnv = nil
+                print("🔄 [HomeViewModel] 数据环境已切换，已清空列表与 lastLoadedDataEnv")
             }
             .store(in: &cancellables)
     }
@@ -117,6 +131,7 @@ class HomeViewModel: ObservableObject {
             publicTime: response.publicTime,
             lastVisiblePostId: lastVisiblePostId
         )
+        lastLoadedDataEnv = AppConfig.dataEnv
         hapticGenerator.impactOccurred()
         isLoading = false
     }
@@ -185,6 +200,13 @@ class HomeViewModel: ObservableObject {
     // 获取最后可见的 Post ID（用于恢复滚动位置）
     func getLastVisiblePostId(for category: HomeCategory) -> String? {
         return categoryData[category]?.lastVisiblePostId
+    }
+    
+    /// 数据环境切换后由 HomeView 调用：清空列表与 lastLoadedDataEnv，使下次 loadInitialData 会重新请求
+    func clearListForDataEnvChange() {
+        categoryData = [:]
+        lastLoadedDataEnv = nil
+        print("🔄 [HomeViewModel] clearListForDataEnvChange - 已清空列表")
     }
     
     // 触觉反馈辅助方法

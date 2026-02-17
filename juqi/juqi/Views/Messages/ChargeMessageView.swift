@@ -9,6 +9,9 @@ import SwiftUI
 
 struct ChargeMessageView: View {
     @StateObject private var viewModel = MessageCategoryViewModel(messageType: MessageTypeConstant.charge)
+    @State private var selectedDynId: String?
+    @State private var selectedUserId: String?
+    @State private var selectedSession: SessionDetailDestination?
     
     var body: some View {
         ZStack {
@@ -34,6 +37,15 @@ struct ChargeMessageView: View {
         .onAppear {
             viewModel.loadMessages()
         }
+        .navigationDestination(item: $selectedDynId) { dynId in
+            PostDetailLoaderView(dynId: dynId)
+        }
+        .navigationDestination(item: $selectedUserId) { userId in
+            UserProfileView(userId: userId, userName: "")
+        }
+        .navigationDestination(item: $selectedSession) { s in
+            MessageDetailView(from: s.from, type: s.type, title: s.title, isChatMode: false)
+        }
     }
     
     private var messageList: some View {
@@ -43,18 +55,20 @@ struct ChargeMessageView: View {
                     ChargeMessageItemView(
                         message: message,
                         onViewTap: {
-                            // 跳转到帖子详情
+                            if let d = message.dynId, !d.isEmpty {
+                                selectedDynId = d
+                            } else {
+                                selectedUserId = message.from
+                            }
                         }
                     )
                     .onAppear {
-                        // 加载更多
                         if index == viewModel.messages.count - 1 && !viewModel.allLoaded {
                             viewModel.loadMore()
                         }
                     }
                 }
                 
-                // 加载更多指示器
                 if viewModel.isLoading && !viewModel.messages.isEmpty {
                     HStack {
                         Spacer()

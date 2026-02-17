@@ -9,6 +9,7 @@ import SwiftUI
 
 struct VisitorMessageView: View {
     @StateObject private var viewModel = MessageCategoryViewModel(messageType: MessageTypeConstant.visit)
+    @State private var selectedUserId: String?
     
     var body: some View {
         ZStack {
@@ -31,7 +32,9 @@ struct VisitorMessageView: View {
                         // 访客列表
                         LazyVStack(spacing: 0) {
                             ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
-                                VisitorMessageItemView(message: message)
+                                VisitorMessageItemView(message: message) {
+                                    selectedUserId = message.from
+                                }
                                     .onAppear {
                                         // 加载更多
                                         if index == viewModel.messages.count - 1 && !viewModel.allLoaded {
@@ -67,6 +70,9 @@ struct VisitorMessageView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             viewModel.loadMessages()
+        }
+        .navigationDestination(item: $selectedUserId) { userId in
+            UserProfileView(userId: userId, userName: "")
         }
     }
     

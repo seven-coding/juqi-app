@@ -115,6 +115,41 @@ struct SkeletonPostCardView: View {
     }
 }
 
+/// 发现页列表单行骨架：左侧 64×64 方块 + 标题行 + 2～3 行简介 + 右侧箭头占位
+struct SkeletonDiscoverRowView: View {
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(hex: "#2F3336"))
+                .frame(width: 64, height: 64)
+                .shimmering()
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(hex: "#2F3336"))
+                    .frame(height: 15)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .shimmering()
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(hex: "#2F3336"))
+                    .frame(height: 13)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .shimmering()
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(hex: "#2F3336"))
+                    .frame(width: 180, height: 13)
+                    .shimmering()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color(hex: "#2F3336"))
+                .frame(width: 8, height: 14)
+                .shimmering()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+}
+
 extension String {
     func toCGFloat() -> CGFloat? {
         if self.hasSuffix("%") {

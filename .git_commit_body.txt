@@ -1,0 +1,16 @@
+新增（Added）
+- 客户端：SkeletonView 等视图或基础设施
+- 云托管/文档：apiServer 或部署相关新增说明
+
+变更（Changed）
+- apiServer：auth/app/database/dyn/user 模块、data-transformer、部署脚本与全局配置说明
+- cloudfunctions：cloudbaserc、chargeHer 等调整；appApi 及测试等大量移除或迁移
+- 客户端：PublishView、SettingsView、juqiApp 等多处视图与配置
+- docs：今日AI请求、日复盘、版本与进度
+
+修复（Fixed）
+- 无
+
+未完成（Pending）
+- 帖子详情：评论列表与接口联调（一级/二级、点赞、图片）
+- 帖子详情：评论输入与提交联调（一级/二级评论、评论图片上传）

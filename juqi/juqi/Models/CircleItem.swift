@@ -30,6 +30,8 @@ struct CircleItem: Identifiable, Codable, Hashable {
     let isJoinCheck: Bool?
     /// 仅限成员发帖
     let isMemberPublic: Bool?
+    /// 是否树洞/匿名电站（发到这里的内容不会出现在首页和个人主页）
+    let isSecret: Bool?
     /// 投稿需审核
     let isPublickCheck: Bool?
     /// 话题列表
@@ -51,6 +53,7 @@ struct CircleItem: Identifiable, Codable, Hashable {
         case nickName
         case isJoinCheck
         case isMemberPublic
+        case isSecret
         case isPublickCheck
         case topic
         case rankListStatus
@@ -59,8 +62,8 @@ struct CircleItem: Identifiable, Codable, Hashable {
     init(id: String, title: String, desc: String? = nil, imageSmall: String? = nil,
          banner: String? = nil, bannerLink: String? = nil, chargeNums: Int? = nil,
          followCircleNums: Int? = nil, nickName: String? = nil, isJoinCheck: Bool? = nil,
-         isMemberPublic: Bool? = nil, isPublickCheck: Bool? = nil, topic: [String]? = nil,
-         rankListStatus: Bool? = nil) {
+         isMemberPublic: Bool? = nil, isSecret: Bool? = nil, isPublickCheck: Bool? = nil,
+         topic: [String]? = nil, rankListStatus: Bool? = nil) {
         self.id = id
         self.title = title
         self.desc = desc
@@ -72,6 +75,7 @@ struct CircleItem: Identifiable, Codable, Hashable {
         self.nickName = nickName
         self.isJoinCheck = isJoinCheck
         self.isMemberPublic = isMemberPublic
+        self.isSecret = isSecret
         self.isPublickCheck = isPublickCheck
         self.topic = topic
         self.rankListStatus = rankListStatus
@@ -92,6 +96,7 @@ struct CircleItem: Identifiable, Codable, Hashable {
         nickName = Self.decodeStringIfPresent(from: c, forKey: .nickName)
         isJoinCheck = Self.decodeBoolIfPresent(from: c, forKey: .isJoinCheck)
         isMemberPublic = Self.decodeBoolIfPresent(from: c, forKey: .isMemberPublic)
+        isSecret = Self.decodeBoolIfPresent(from: c, forKey: .isSecret)
         isPublickCheck = Self.decodeBoolIfPresent(from: c, forKey: .isPublickCheck)
         topic = Self.decodeTopicIfPresent(from: c, forKey: .topic)
         rankListStatus = Self.decodeBoolIfPresent(from: c, forKey: .rankListStatus)
@@ -155,6 +160,7 @@ struct CircleItem: Identifiable, Codable, Hashable {
         try c.encodeIfPresent(nickName, forKey: .nickName)
         try c.encodeIfPresent(isJoinCheck, forKey: .isJoinCheck)
         try c.encodeIfPresent(isMemberPublic, forKey: .isMemberPublic)
+        try c.encodeIfPresent(isSecret, forKey: .isSecret)
         try c.encodeIfPresent(isPublickCheck, forKey: .isPublickCheck)
         try c.encodeIfPresent(topic, forKey: .topic)
         try c.encodeIfPresent(rankListStatus, forKey: .rankListStatus)
