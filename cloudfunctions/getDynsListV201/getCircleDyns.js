@@ -1,4 +1,5 @@
 // 获取圈子列表
+// dynStatus 含义见同目录 dynStatus.js（与小程序统一：1=全部可见，2=仅圈子/树洞可见）
 const cloud = require('wx-server-sdk')
 // 不在顶层调用 cloud.init()，由 index.js 统一初始化
 
@@ -60,16 +61,21 @@ async function getCircleDyns(event, ownOpenId) {
         throw e;
       }
     }
-    // 树洞/私密电站帖子由 sendSecretDyns 写入 dynStatus: 2，此处保持一致
-    const circleDynStatus = circleInfo ? (circleInfo.circleDynStatus ?? (circleInfo.isSecret ? 2 : 1)) : 1;
+    // 与小程序统一：树洞/私密电站 dynStatus=2（仅圈子内可见），普通电站=1（全部可见）
+    // 树洞发布走 sendSecretDyns 写 2；若 getCircle 未命中会误走 sendNormalDyn 写 1，故树洞查询兼容 [1,2]
+    const circleDynStatus = circleInfo ? (circleInfo.circleDynStatus ?? (circleInfo.isSecret ? 2 : 1)) : null;
+    const isSecret = circleInfo && (circleInfo.isSecret === true || circleInfo.isSecret === 1);
 
-    // 正常圈子动态（无 circle 文档时用默认 dynStatus: 1，避免测试环境列表恒空）
     query = {
       circleId,
-      dynStatus: circleDynStatus,
       hiddenStatus: _.neq(1),
       isDelete: _.neq(1),
     };
+    if (isSecret || circleDynStatus == null) {
+      query.dynStatus = _.in([1, 2]); // 树洞标准为 2，兼容误写 1
+    } else {
+      query.dynStatus = circleDynStatus; // 与小程序一致：按 circle.circleDynStatus
+    }
     redisValue = publicTime ? `${publicTime}-${circleId.slice(0, 8)}` : `NEW_DYN_${circleId.slice(0, 8)}`;
   } 
 

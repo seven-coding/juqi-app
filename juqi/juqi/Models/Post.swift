@@ -343,6 +343,50 @@ struct UserProfile: Identifiable, Codable {
         case admin
     }
     
+    /// 容错解码：缺字段时使用默认值，避免 appGetCurrentUserProfile 返回结构异常导致白屏或崩溃
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
+        userName = try c.decodeIfPresent(String.self, forKey: .userName) ?? ""
+        avatar = try c.decodeIfPresent(String.self, forKey: .avatar)
+        signature = try c.decodeIfPresent(String.self, forKey: .signature)
+        isVip = try c.decodeIfPresent(Bool.self, forKey: .isVip) ?? false
+        level = try c.decodeIfPresent(Int.self, forKey: .level)
+        age = try c.decodeIfPresent(Int.self, forKey: .age)
+        constellation = try c.decodeIfPresent(String.self, forKey: .constellation)
+        city = try c.decodeIfPresent(String.self, forKey: .city)
+        followCount = try c.decodeIfPresent(Int.self, forKey: .followCount) ?? 0
+        followerCount = try c.decodeIfPresent(Int.self, forKey: .followerCount) ?? 0
+        isFollowing = try c.decodeIfPresent(Bool.self, forKey: .isFollowing)
+        isCharged = try c.decodeIfPresent(Bool.self, forKey: .isCharged)
+        chargeCount = try c.decodeIfPresent(Int.self, forKey: .chargeCount)
+        chargeNums = try c.decodeIfPresent(Int.self, forKey: .chargeNums)
+        // 兼容服务端返回 Int 或 String（如 "2"），避免解码失败导致关注状态丢失
+        if let raw = try? c.decodeIfPresent(Int.self, forKey: .followStatus) {
+            followStatus = FollowStatus(rawValue: raw)
+        } else if let rawStr = try? c.decodeIfPresent(String.self, forKey: .followStatus), let raw = Int(rawStr) {
+            followStatus = FollowStatus(rawValue: raw)
+        } else {
+            followStatus = nil
+        }
+        chargingStatus = try c.decodeIfPresent(Bool.self, forKey: .chargingStatus)
+        joinStatus = try c.decodeIfPresent(UserJoinStatus.self, forKey: .joinStatus)
+        blackStatus = try c.decodeIfPresent(BlackStatus.self, forKey: .blackStatus)
+        restStatus = try c.decodeIfPresent(Bool.self, forKey: .restStatus)
+        vipStatus = try c.decodeIfPresent(Bool.self, forKey: .vipStatus)
+        vipConfig = try c.decodeIfPresent(VipConfig.self, forKey: .vipConfig)
+        imgList = try c.decodeIfPresent([String].self, forKey: .imgList)
+        bindUserInfo = try c.decodeIfPresent(String.self, forKey: .bindUserInfo)
+        ownOpenId = try c.decodeIfPresent(String.self, forKey: .ownOpenId)
+        publishCount = try c.decodeIfPresent(Int.self, forKey: .publishCount)
+        collectionCount = try c.decodeIfPresent(Int.self, forKey: .collectionCount)
+        inviteCount = try c.decodeIfPresent(Int.self, forKey: .inviteCount)
+        blockedCount = try c.decodeIfPresent(Int.self, forKey: .blockedCount)
+        isInvisible = try c.decodeIfPresent(Bool.self, forKey: .isInvisible)
+        isOwnProfileFromAPI = try c.decodeIfPresent(Bool.self, forKey: .isOwnProfileFromAPI)
+        admin = try c.decodeIfPresent(Bool.self, forKey: .admin)
+    }
+    
     // 判断是否是自己：优先用服务端返回的 isOwnProfile，否则用 id == ownOpenId
     var isOwnProfile: Bool {
         if let fromAPI = isOwnProfileFromAPI { return fromAPI }
@@ -466,4 +510,6 @@ struct PublishResponse: Codable {
     let code: Int
     let message: String
     let requestID: String?
+    /// 服务端写入的展示状态：1=全部可见 2=仅圈子/树洞可见，便于前端排查
+    let dynStatus: Int?
 }

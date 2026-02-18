@@ -74,6 +74,8 @@ struct PublishView: View {
     var initialCircleId: String? = nil
     /// 从电站页进入时展示的电站名称
     var initialCircleTitle: String? = nil
+    /// 从电站页进入时是否为树洞/匿名电站（仅电站内可见、不出首页）
+    var initialCircleIsSecret: Bool = false
     /// 当前选中的发布电站（正常进入时也显示，可点击切换）
     @State private var selectedCircleId: String = ""
     @State private var selectedCircleTitle: String = "日常"
@@ -105,10 +107,18 @@ struct PublishView: View {
     // 话题相关
     @State private var selectedTopics: [String] = []
     @State private var isShowingTopicSelector = false
+    /// 输入 # 时联想的话题列表（来自 searchTopic）
+    @State private var topicSuggestions: [Topic] = []
+    @State private var topicSuggestionsLoading = false
+    /// 输入框获得焦点时、工具栏上方展示的推荐话题（来自 getTopicList）
+    @State private var inlineRecommendedTopics: [Topic] = []
     
     // @用户相关
     @State private var selectedAitUsers: [AitUser] = []
     @State private var isShowingUserSelector = false
+    /// 输入 @ 时联想的用户列表（无关键词=关注列表，有关键词=搜索用户）
+    @State private var userSuggestions: [User] = []
+    @State private var userSuggestionsLoading = false
     
     // 音乐相关
     @State private var selectedMusic: MusicInfo?
@@ -182,7 +192,7 @@ struct PublishView: View {
             if let id = initialCircleId, !id.isEmpty {
                 selectedCircleId = id
                 selectedCircleTitle = initialCircleTitle ?? "日常"
-                selectedCircleIsSecret = false
+                selectedCircleIsSecret = initialCircleIsSecret
             } else if selectedCircleId.isEmpty {
                 selectedCircleId = "a9bfcffc5eba1e380072920313b78c59"
                 selectedCircleTitle = "日常"
@@ -481,21 +491,63 @@ struct PublishView: View {
         }
     }
 
+    /// 输入 # 时加载话题联想：无关键词调列表，有关键词调搜索
+    private func loadTopicSuggestions(query: String) async {
+        topicSuggestionsLoading = true
+        topicSuggestions = []
+        defer { topicSuggestionsLoading = false }
+        do {
+            let list = try await APIService.shared.searchTopic(keyword: query.isEmpty ? nil : query)
+            await MainActor.run { topicSuggestions = list }
+        } catch {
+            await MainActor.run { topicSuggestions = [] }
+        }
+    }
+
+    /// 加载工具栏上方推荐话题（getTopicList，仅加载一次，避免重复请求）
+    private func loadInlineRecommendedTopics() async {
+        guard inlineRecommendedTopics.isEmpty else { return }
+        do {
+            let list = try await APIService.shared.getTopicList()
+            await MainActor.run { inlineRecommendedTopics = list }
+        } catch {
+            await MainActor.run { inlineRecommendedTopics = [] }
+        }
+    }
+
+    /// 输入 @ 时加载用户联想：无关键词=当前用户关注列表，有关键词=搜索用户
+    private func loadUserSuggestions(query: String) async {
+        userSuggestionsLoading = true
+        userSuggestions = []
+        defer { userSuggestionsLoading = false }
+        let list: [User]?
+        if query.isEmpty {
+            guard let openId = AuthService.shared.currentUserOpenId, !openId.isEmpty else {
+                await MainActor.run { userSuggestions = [] }
+                return
+            }
+            list = try? await APIService.shared.getUserList(type: .follow, userId: openId, page: 1, limit: 30).list
+        } else {
+            list = try? await APIService.shared.searchUser(keyword: query)
+        }
+        await MainActor.run { userSuggestions = list ?? [] }
+    }
+
     // MARK: - 推荐区域
     private var suggestionSection: some View {
         Group {
             switch searchingType {
             case .none:
                 if isInputActive || isShowingEmojiPicker {
-                    // 图1：输入内容时，推荐话题在工具栏上方显示
+                    // 输入内容时，工具栏上方显示推荐话题（来自 getTopicList，recommend: true）
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            ForEach(["小红书科技AMA", "潜水员戴夫", "vibecoding"], id: \.self) { topic in
+                            ForEach(inlineRecommendedTopics) { topic in
                                 Button(action: {
-                                    insertText("#\(topic)# ")
+                                    insertText("#\(topic.name)# ")
                                     impactFeedback.impactOccurred()
                                 }) {
-                                    Text("#\(topic)")
+                                    Text("#\(topic.name)")
                                         .font(.system(size: 14))
                                         .foregroundColor(.white.opacity(0.8))
                                         .padding(.horizontal, 12)
@@ -509,25 +561,35 @@ struct PublishView: View {
                         .padding(.vertical, 10)
                     }
                     .background(BlurView(style: .systemChromeMaterialDark))
+                    .task {
+                        await loadInlineRecommendedTopics()
+                    }
                 }
             case .topic(let query):
-                // 图2：输入话题时，显示推荐话题列表
+                // 输入 # 时显示话题联想（来自 appSearchTopic：无关键词=列表，有关键词=搜索）
                 VStack(spacing: 0) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(["cursor", "开发", "有想法轻松", "小红书文采比拼"], id: \.self) { topic in
-                                if query.isEmpty || topic.contains(query) {
+                    if topicSuggestionsLoading {
+                        ProgressView()
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                    } else if topicSuggestions.isEmpty {
+                        Text("输入关键词搜索话题，或直接输入创建新话题")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.4))
+                            .padding(20)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(topicSuggestions) { topic in
                                     Button(action: {
-                                        replaceTriggerWithText(trigger: "#", replacement: "#\(topic)# ")
+                                        replaceTriggerWithText(trigger: "#", replacement: "#\(topic.name)# ")
                                         impactFeedback.impactOccurred()
                                     }) {
                                         HStack {
-                                            Text("# \(topic)")
+                                            Text("# \(topic.name)")
                                                 .foregroundColor(.white)
                                             Spacer()
-                                            Text("\(Int.random(in: 100...9000))万浏览")
-                                                .font(.system(size: 12))
-                                                .foregroundColor(.white.opacity(0.4))
                                         }
                                         .padding(.horizontal, 20)
                                         .padding(.vertical, 12)
@@ -536,26 +598,57 @@ struct PublishView: View {
                                 }
                             }
                         }
+                        .frame(maxHeight: 200)
                     }
-                    .frame(maxHeight: 200)
                 }
                 .background(BlurView(style: .systemChromeMaterialDark))
+                .task(id: query) {
+                    await loadTopicSuggestions(query: query)
+                }
             case .user(let query):
-                // 图3：输入用户时，显示用户关注列表
+                // 只输入 @ 时=已关注列表，输入 @+关键词=搜索用户
                 VStack(spacing: 0) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(["Christine-海外红人营销", "ShawnHacks", "在人间流浪"], id: \.self) { user in
-                                if query.isEmpty || user.contains(query) {
+                    if query.isEmpty {
+                        Text("已关注列表")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 12)
+                            .padding(.bottom, 4)
+                    }
+                    if userSuggestionsLoading {
+                        ProgressView()
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                    } else if userSuggestions.isEmpty {
+                        Text(query.isEmpty ? "暂无已关注用户，输入昵称可搜索" : "未找到相关用户")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.4))
+                            .padding(20)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(userSuggestions) { user in
                                     Button(action: {
-                                        replaceTriggerWithText(trigger: "@", replacement: "@\(user) ")
+                                        replaceTriggerWithText(trigger: "@", replacement: "@\(user.userName) ")
+                                        if !selectedAitUsers.contains(where: { $0.openId == user.id }) {
+                                            selectedAitUsers.append(AitUser(openId: user.id, nickName: user.userName))
+                                        }
                                         impactFeedback.impactOccurred()
                                     }) {
                                         HStack(spacing: 12) {
-                                            Circle()
-                                                .fill(Color.gray)
-                                                .frame(width: 32, height: 32)
-                                            Text(user)
+                                            AsyncImage(url: URL(string: user.avatar ?? "")) { image in
+                                                image.resizable().aspectRatio(contentMode: .fill)
+                                            } placeholder: {
+                                                Circle().fill(Color.white.opacity(0.1))
+                                                    .overlay(Text(user.userName.prefix(1)).foregroundColor(.white))
+                                            }
+                                            .frame(width: 36, height: 36)
+                                            .clipShape(Circle())
+                                            Text(user.userName)
+                                                .font(.system(size: 15))
                                                 .foregroundColor(.white)
                                             Spacer()
                                         }
@@ -566,10 +659,13 @@ struct PublishView: View {
                                 }
                             }
                         }
+                        .frame(maxHeight: 200)
                     }
-                    .frame(maxHeight: 200)
                 }
                 .background(BlurView(style: .systemChromeMaterialDark))
+                .task(id: query) {
+                    await loadUserSuggestions(query: query)
+                }
             }
         }
     }
@@ -660,7 +756,9 @@ struct PublishView: View {
             
             let circleIdToUse = selectedCircleId.isEmpty ? "a9bfcffc5eba1e380072920313b78c59" : selectedCircleId
             let circleTitleToUse = selectedCircleTitle.isEmpty ? "日常" : selectedCircleTitle
-            print("📡 正在调用发布接口... circleId=\(circleIdToUse), circleTitle=\(circleTitleToUse)")
+            // 树洞必须传 isSecret，保证服务端写 dynStatus=2，仅电站展示、不出首页
+            let isSecretToSend = selectedCircleIsSecret || circleTitleToUse == "树洞"
+            print("📡 正在调用发布接口... circleId=\(circleIdToUse), circleTitle=\(circleTitleToUse), isSecret=\(isSecretToSend)")
             let response = try await APIService.shared.publishDyn(
                 content: content,
                 circleId: circleIdToUse,
@@ -668,24 +766,36 @@ struct PublishView: View {
                 imageIds: imageUrls,
                 topic: selectedTopics,
                 ait: selectedAitUsers,
-                music: selectedMusic
+                music: selectedMusic,
+                isSecret: isSecretToSend
             )
             
             print("📦 发布接口响应: code=\(response.code), message=\(response.message)")
             
-            if response.code == 200 {
-                print("🎉 发布成功！")
+            if response.code == 200 || response.code == 201 {
+                // 发布成功日志：便于排查首页/电站展示、dynStatus 是否写对
+                let expectedDynStatus = isSecretToSend ? 2 : 1
+                let dynStatusInfo = response.dynStatus != nil ? "dynStatus=\(response.dynStatus!)" : "expectedDynStatus=\(expectedDynStatus)"
+                print("🎉 [发布成功] dynId=\(response.dynId ?? "-") circleId=\(circleIdToUse) circleTitle=\(circleTitleToUse) isSecret=\(isSecretToSend) \(dynStatusInfo)")
                 // 清除草稿
                 UserDefaults.standard.removeObject(forKey: draftCacheKey)
                 
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 
-                // 通知首页刷新并切换 Tab
-                NotificationCenter.default.post(name: NSNotification.Name("PostPublished"), object: nil)
-                withAnimation(.spring()) {
-                    activeTab = .home
+                // 发布到日常：回到首页并刷新；发布到非日常：回到该电站主页并刷新
+                let isDailyCircle = circleIdToUse == "a9bfcffc5eba1e380072920313b78c59"
+                if isDailyCircle {
+                    NotificationCenter.default.post(name: NSNotification.Name("PostPublished"), object: nil)
+                    withAnimation(.spring()) {
+                        activeTab = .home
+                    }
+                } else {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("PostPublishedToCircle"),
+                        object: nil,
+                        userInfo: ["circleId": circleIdToUse, "circleTitle": circleTitleToUse]
+                    )
                 }
-                
                 dismiss()
             } else {
                 print("❌ 发布失败: \(response.message)")

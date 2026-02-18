@@ -87,7 +87,6 @@ struct ChargeListView: View {
         } catch {
             print("Failed to load charges: \(error)")
         }
-        applyMockChargesIfNeeded()
         isLoading = false
     }
     
@@ -108,82 +107,6 @@ struct ChargeListView: View {
             page -= 1
         }
         isLoading = false
-    }
-    
-    private func applyMockChargesIfNeeded() {
-#if DEBUG
-        guard charges.isEmpty else { return }
-        
-        // 创建mock帖子
-        let mockPost1 = Post(
-            id: "mock_post_001",
-            userId: "mock_user_101",
-            userName: "晴空万里",
-            userAvatar: nil,
-            userSignature: "既难飞至,则必跛行",
-            isVip: true,
-            content: "今天天气真好，适合出去走走。分享一些美好的瞬间给大家。",
-            images: ["https://picsum.photos/400/400?random=1"],
-            tag: .daily,
-            publishTime: Date().addingTimeInterval(-300),
-            commentCount: 5,
-            likeCount: 20,
-            shareCount: 3,
-            chargeCount: 2,
-            isLiked: false,
-            isCollected: false,
-            isCharged: false,
-            repostPost: nil,
-            likeUsers: nil,
-            joinCount: nil,
-            circleId: nil,
-            circleTitle: nil,
-            circleJoinCount: nil,
-            voiceUrl: nil,
-            voiceDuration: nil,
-            videoUrl: nil,
-            musicInfo: nil
-        )
-        
-        let mockPost2 = Post(
-            id: "mock_post_002",
-            userId: "mock_user_102",
-            userName: "小橘灯",
-            userAvatar: nil,
-            userSignature: "生活需要一点甜",
-            isVip: false,
-            content: "分享一张美图，希望大家喜欢。",
-            images: ["https://picsum.photos/400/400?random=2", "https://picsum.photos/400/400?random=3"],
-            tag: .daily,
-            publishTime: Date().addingTimeInterval(-3600 * 3),
-            commentCount: 2,
-            likeCount: 10,
-            shareCount: 1,
-            chargeCount: 1,
-            isLiked: false,
-            isCollected: false,
-            isCharged: false,
-            repostPost: nil,
-            likeUsers: nil,
-            joinCount: nil,
-            circleId: nil,
-            circleTitle: nil,
-            circleJoinCount: nil,
-            voiceUrl: nil,
-            voiceDuration: nil,
-            videoUrl: nil,
-            musicInfo: nil
-        )
-        
-        charges = [
-            ChargeItem(id: "mock_charge_001", userId: "mock_user_101", userName: "晴空万里", avatar: nil, signature: "既难飞至,则必跛行", chargeTime: Date().addingTimeInterval(-300), chargeNums: 2, dynId: "mock_post_001", post: mockPost1),
-            ChargeItem(id: "mock_charge_002", userId: "mock_user_102", userName: "小橘灯", avatar: nil, signature: "生活需要一点甜", chargeTime: Date().addingTimeInterval(-3600 * 3), chargeNums: 1, dynId: "mock_post_002", post: mockPost2),
-            ChargeItem(id: "mock_charge_003", userId: "mock_user_103", userName: "边城旧梦", avatar: nil, signature: "记录生活的点点滴滴", chargeTime: Date().addingTimeInterval(-3600 * 12), chargeNums: 5, dynId: nil, post: nil),
-            ChargeItem(id: "mock_charge_004", userId: "mock_user_104", userName: "森屿昼", avatar: nil, signature: nil, chargeTime: Date().addingTimeInterval(-3600 * 26), chargeNums: 3, dynId: nil, post: nil),
-            ChargeItem(id: "mock_charge_005", userId: "mock_user_105", userName: "懒猫作息", avatar: nil, signature: "享受慢生活", chargeTime: Date().addingTimeInterval(-3600 * 48), chargeNums: 1, dynId: nil, post: nil)
-        ]
-        hasMore = false
-#endif
     }
 }
 
@@ -256,7 +179,7 @@ struct ChargeItem: Identifiable, Codable {
         try container.encodeIfPresent(post, forKey: .post)
     }
     
-    // 便捷初始化方法（用于mock数据）
+    /// 便捷初始化（解码或构造用）
     init(id: String, userId: String, userName: String, avatar: String?, signature: String? = nil, chargeTime: Date, chargeNums: Int? = nil, dynId: String? = nil, post: Post? = nil) {
         self.id = id
         self.userId = userId

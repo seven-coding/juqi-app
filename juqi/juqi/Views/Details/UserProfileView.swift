@@ -28,7 +28,7 @@ struct UserProfileView: View {
     @State private var confirmDialogTitle = ""
     @State private var confirmDialogMessage = ""
     @State private var confirmDialogAction: (() -> Void)?
-    @State private var actionSheetItems: [ActionSheetItem] = []
+    @State private var actionSheetItems: [ActionSheetView.ActionItem] = []
     @State private var showFollowList = false
     @State private var showFollowerList = false
     @State private var showChargeList = false
@@ -47,6 +47,13 @@ struct UserProfileView: View {
     @State private var showHeaderImagePreview = false
     @State private var headerPreviewImages: [String] = []
     @State private var headerPreviewIndex = 0
+    /// 当服务端未返回 followStatus 时，单独拉取的关注状态（仅他人主页使用）
+    @State private var fetchedFollowStatus: FollowStatus? = nil
+    /// 关注/取关后的乐观展示：粉丝数临时 +1/-1，刷新资料后清空
+    @State private var followerCountOverride: Int? = nil
+    /// 充电后的乐观展示：视为已充电、电量数 +1，刷新资料后清空
+    @State private var chargingStatusOverride: Bool? = nil
+    @State private var chargeNumsOverride: Int? = nil
     
     var body: some View {
         ZStack {
@@ -101,14 +108,8 @@ struct UserProfileView: View {
         .task {
             print("📥 [UserProfileView] .task 入口 isOwnProfile=\(isOwnProfile), userId=\(userId)")
             await loadCurrentUserId()
-            if effectiveIsOwnProfile {
-                await loadUserProfile()
-                await loadUserPosts()
-            } else {
-                async let _profile: Void = loadUserProfile()
-                async let _posts: Void = loadUserPosts()
-                _ = await (_profile, _posts)
-            }
+            await loadUserProfile()
+            await loadUserPosts()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PostDetailDidPinChange"))) { _ in
             if userProfile?.isOwnProfile == true {
@@ -189,9 +190,11 @@ struct UserProfileView: View {
             }
         }
         .sheet(isPresented: $showActionSheet) {
-            MoreActionBottomSheet(items: actionSheetItems) {
-                showActionSheet = false
-            }
+            MoreOptionsSheetView(
+                actions: actionSheetItems,
+                onActionSelected: { handleMoreAction($0) },
+                onDismiss: { showActionSheet = false }
+            )
         }
         .toolbar(.hidden, for: .tabBar)
         .navigationDestination(isPresented: Binding(
@@ -221,7 +224,7 @@ struct UserProfileView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     // 个人资料区域
-                    profileInfoSection(profile: profile)
+                    profileInfoSection(profile: profile, displayFollowerCount: followerCountOverride, displayChargeNums: chargeNumsOverride)
                         .padding(.top, 20)
                     
                     // 头图列表
@@ -230,7 +233,10 @@ struct UserProfileView: View {
                             .padding(.top, 16)
                     }
                     
-                    // 动态列表
+                    // 动态列表（DEBUG 下打日志便于定位个人主页列表不显示）
+                    #if DEBUG
+                    let _ = print("📋 [UserProfileView] normalContentView 渲染 isLoadingPosts=\(isLoadingPosts) posts.count=\(posts.count) hasMore=\(hasMore)")
+                    #endif
                     if isLoadingPosts && posts.isEmpty {
                         // 加载中显示骨架屏
                         VStack(spacing: 0) {
@@ -658,7 +664,7 @@ struct UserProfileView: View {
     }
     
     // MARK: - 个人资料区域
-    private func profileInfoSection(profile: UserProfile) -> some View {
+    private func profileInfoSection(profile: UserProfile, displayFollowerCount: Int? = nil, displayChargeNums: Int? = nil) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             // 头像和用户名（水平布局）
             HStack(alignment: .top, spacing: 12) {
@@ -773,7 +779,7 @@ struct UserProfileView: View {
                         Text("粉丝")
                             .font(.system(size: 14))
                             .foregroundColor(Color(hex: "#71767A"))
-                        Text("\(profile.followerCount)")
+                        Text("\(displayFollowerCount ?? profile.followerCount)")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundColor(.white)
                     }
@@ -790,7 +796,7 @@ struct UserProfileView: View {
                         Text("充电")
                             .font(.system(size: 14))
                             .foregroundColor(Color(hex: "#71767A"))
-                        Text("\(profile.chargeNums ?? 0)")
+                        Text("\(displayChargeNums ?? profile.chargeNums ?? 0)")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundColor(.white)
                     }
@@ -867,14 +873,21 @@ struct UserProfileView: View {
     
     // MARK: - 底部操作栏（iOS 26 液态玻璃设计）
     private func bottomActionBar(profile: UserProfile) -> some View {
-        let followStatus = profile.followStatus ?? .notFollowing
-        let isFollowing = followStatus == .following || followStatus == .mutual
-        // nil 视为未充电，仅 true 为已充电，避免状态显示异常
-        let isCharged = profile.chargingStatus == true
+        // 仅他人主页展示关注状态：profile.followStatus / isFollowing（兜底）/ fetchedFollowStatus
+        let effectiveFollowStatus: FollowStatus = {
+            if let s = profile.followStatus { return s }
+            if profile.isFollowing == true { return .following }
+            if let s = fetchedFollowStatus { return s }
+            return .notFollowing
+        }()
+        let isFollowing = effectiveFollowStatus == .following || effectiveFollowStatus == .mutual
+        let showFollowButton = !profile.isOwnProfile  // 本人不显示关注按钮
+        // 充电状态：乐观更新优先，否则以 profile.chargingStatus 为准
+        let isCharged = chargingStatusOverride ?? (profile.chargingStatus == true)
 
         return HStack(spacing: 12) {
             // 已关注状态下，添加左侧弹性空间实现居中
-            if isFollowing {
+            if showFollowButton && isFollowing {
                 Spacer()
             }
             
@@ -897,6 +910,7 @@ struct UserProfileView: View {
                     .foregroundColor(.white)
                     .frame(width: 80)
                     .padding(.vertical, 10)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
                 
@@ -929,53 +943,65 @@ struct UserProfileView: View {
                     .foregroundColor(isCharged ? Color(hex: "#FF6B35") : .white)
                     .frame(width: 80)
                     .padding(.vertical, 10)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
                 .disabled(isCharged)
             }
             .background {
                 liquidGlassEffect(cornerRadius: 32)
+                    .allowsHitTesting(false)
             }
             .frame(height: 64)
             
-            // 右侧：未关注时显示圆形关注按钮，已关注时显示「已关注」标签（与「已充电」样式对称）
-            if isFollowing {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18, weight: .medium))
-                    Text("已关注")
-                        .font(.system(size: 13, weight: .medium))
-                }
-                .foregroundColor(Color(hex: "#34C759").opacity(0.95))
-                .frame(width: 64, height: 64)
-                .background {
-                    Circle()
-                        .fill(.clear)
-                        .glassEffect(.regular.interactive())
-                }
-            } else {
-                Button(action: {
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.impactOccurred()
-                    Task {
-                        await handleFollow(profile: profile)
+            // 右侧：仅他人主页显示关注按钮；未关注显示圆形「关注」，已关注显示「已关注」标签
+            if showFollowButton {
+                if isFollowing {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18, weight: .medium))
+                        Text("已关注")
+                            .font(.system(size: 13, weight: .medium))
                     }
-                }) {
-                    Image(systemName: followStatus == .notFollowing || followStatus == .followBack ? "plus" : "checkmark")
-                        .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(Color(hex: "#34C759").opacity(0.95))
+                    .frame(width: 64, height: 64)
+                    .background {
+                        Circle()
+                            .fill(.clear)
+                            .glassEffect(.regular.interactive())
+                            .allowsHitTesting(false)
+                    }
+                } else {
+                    Button(action: {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        Task {
+                            await handleFollow(profile: profile)
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: effectiveFollowStatus == .notFollowing || effectiveFollowStatus == .followBack ? "plus" : "checkmark")
+                                .font(.system(size: 18, weight: .medium))
+                            Text("关注")
+                                .font(.system(size: 13, weight: .medium))
+                        }
                         .foregroundColor(.white)
-                        .frame(width: 64, height: 64)
+                        .frame(height: 64)
+                        .padding(.horizontal, 16)
+                        .contentShape(Rectangle())
                         .background {
-                            Circle()
+                            Capsule()
                                 .fill(.clear)
                                 .glassEffect(.regular.interactive())
+                                .allowsHitTesting(false)
                         }
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .buttonStyle(PlainButtonStyle())
             }
             
             // 已关注状态下，添加右侧弹性空间实现居中
-            if isFollowing {
+            if showFollowButton && isFollowing {
                 Spacer()
             }
         }
@@ -1033,70 +1059,68 @@ struct UserProfileView: View {
     
     private func showMoreActionSheet() {
         guard let profile = userProfile else { return }
-        
-        var items: [ActionSheetItem] = []
-        
+
+        var items: [ActionSheetView.ActionItem] = []
+
         if profile.isOwnProfile {
-            // 自己主页：复制ID
-            items.append(ActionSheetItem(title: "复制ID", action: {
-                UIPasteboard.general.string = profile.id
-            }))
+            items.append(ActionSheetView.ActionItem(title: "复制ID", icon: "doc.on.doc", isDestructive: false))
         } else {
-            // 他人主页：分享主页、拉黑/取消拉黑、隐身访问
-            items.append(ActionSheetItem(title: "分享主页", action: {
-                shareUserProfile(userId: profile.id, userName: profile.userName)
-            }))
+            items.append(ActionSheetView.ActionItem(title: "分享主页", icon: "square.and.arrow.up", isDestructive: false))
             if let blackStatus = profile.blackStatus {
                 if blackStatus == .blackedOther || blackStatus == .mutualBlack {
-                    items.append(ActionSheetItem(title: "取消拉黑", action: {
-                        showConfirmDialog(title: "取消拉黑", message: "确定要取消拉黑吗？") {
-                            Task {
-                                await unblackUser(profile: profile)
-                            }
-                        }
-                    }))
+                    items.append(ActionSheetView.ActionItem(title: "取消拉黑", icon: "person.badge.plus", isDestructive: false))
                 } else {
-                    items.append(ActionSheetItem(title: "拉黑", action: {
-                        showConfirmDialog(title: "拉黑", message: "确定要拉黑该用户吗？") {
-                            Task {
-                                await blackUser(profile: profile)
-                            }
-                        }
-                    }))
+                    items.append(ActionSheetView.ActionItem(title: "拉黑", icon: "person.crop.circle.badge.minus", isDestructive: true))
                 }
             }
-            
-            // 隐身访问（仅当前用户为 VIP 时显示）
             if currentUserIsVip {
                 let isInvisible = profile.isInvisible ?? false
-                items.append(ActionSheetItem(title: isInvisible ? "取消隐身" : "隐身访问", action: {
-                    Task {
-                        await setVisitStatusAndReload(profile: profile, leaveTrace: isInvisible)
-                    }
-                }))
+                items.append(ActionSheetView.ActionItem(
+                    title: isInvisible ? "取消隐身" : "隐身访问",
+                    icon: isInvisible ? "eye" : "eye.slash",
+                    isDestructive: false
+                ))
             }
-            
-            // 管理员入口
             if currentUserIsAdmin {
-                items.append(ActionSheetItem(title: "设置用户状态", action: {
-                    adminStatusTargetUserId = profile.id
-                    showAdminStatusSheet = true
-                }))
-                items.append(ActionSheetItem(title: "设置用户标签", action: {
-                    Task {
-                        await showSetUserAuthPlaceholder()
-                    }
-                }))
-                items.append(ActionSheetItem(title: "操作记录", action: {
-                    Task {
-                        await loadAndShowActionHistory(userId: profile.id)
-                    }
-                }))
+                items.append(ActionSheetView.ActionItem(title: "设置用户状态", icon: "gearshape", isDestructive: false))
+                items.append(ActionSheetView.ActionItem(title: "设置用户标签", icon: "tag", isDestructive: false))
+                items.append(ActionSheetView.ActionItem(title: "操作记录", icon: "clock.arrow.circlepath", isDestructive: false))
             }
         }
-        
+
         actionSheetItems = items
         showActionSheet = true
+    }
+
+    private func handleMoreAction(_ action: ActionSheetView.ActionItem) {
+        guard let profile = userProfile else { return }
+        switch action.title {
+        case "复制ID":
+            UIPasteboard.general.string = profile.id
+            ToastManager.shared.success("复制成功")
+        case "分享主页":
+            shareUserProfile(userId: profile.id, userName: profile.userName)
+        case "取消拉黑":
+            showConfirmDialog(title: "取消拉黑", message: "确定要取消拉黑吗？") {
+                Task { await unblackUser(profile: profile) }
+            }
+        case "拉黑":
+            showConfirmDialog(title: "拉黑", message: "确定要拉黑该用户吗？") {
+                Task { await blackUser(profile: profile) }
+            }
+        case "取消隐身", "隐身访问":
+            let isInvisible = profile.isInvisible ?? false
+            Task { await setVisitStatusAndReload(profile: profile, leaveTrace: isInvisible) }
+        case "设置用户状态":
+            adminStatusTargetUserId = profile.id
+            showAdminStatusSheet = true
+        case "设置用户标签":
+            Task { await showSetUserAuthPlaceholder() }
+        case "操作记录":
+            Task { await loadAndShowActionHistory(userId: profile.id) }
+        default:
+            break
+        }
     }
     
     private func showSetUserAuthPlaceholder() async {
@@ -1190,31 +1214,57 @@ struct UserProfileView: View {
             }
             await MainActor.run {
                 userProfile = profile
+                // 若服务端已返回 followStatus，不再使用单独拉取的状态
+                if profile.followStatus != nil {
+                    fetchedFollowStatus = nil
+                }
+                // 刷新后以服务端数据为准，清空乐观更新的粉丝数/充电状态
+                followerCountOverride = nil
+                chargingStatusOverride = nil
+                chargeNumsOverride = nil
             }
             // 仅当非本人且未对该用户隐身访问时留下访客痕迹
             if !profile.isOwnProfile, profile.isInvisible != true {
                 try? await APIService.shared.recordVisit(userId: userId)
             }
+            // 他人主页且服务端未返回 followStatus 时，单独拉取以正确展示「已关注/未关注」
+            if !profile.isOwnProfile, profile.followStatus == nil {
+                await fetchAndSetFollowStatus(userId: profile.id)
+            }
         } catch {
             print("❌ [UserProfileView] loadUserProfile 失败 effectiveIsOwnProfile=\(effectiveIsOwnProfile), userId=\(userId), error=\(error)")
         }
     }
+    
+    /// 单独拉取关注状态并写入 fetchedFollowStatus（用于服务端未在 profile 中返回 followStatus 时）
+    private func fetchAndSetFollowStatus(userId: String) async {
+        do {
+            let status = try await APIService.shared.getUserFollowStatus(userId: userId)
+            await MainActor.run { fetchedFollowStatus = status }
+        } catch {
+            print("❌ [UserProfileView] fetchAndSetFollowStatus 失败 userId=\(userId), error=\(error)")
+        }
+    }
 
+    /// 帖子列表查询必须使用 profile.id（user 表 _id），openId 仅用于鉴权与是否本人判断
     private func loadUserPosts() async {
-        let targetUserId = (effectiveIsOwnProfile ? userProfile?.id : nil) ?? userId
-        print("📥 [UserProfileView] loadUserPosts 入口 effectiveIsOwnProfile=\(effectiveIsOwnProfile), userId=\(userId), userProfile?.id=\(userProfile?.id ?? "nil"), targetUserId=\(targetUserId)")
+        guard let profileId = userProfile?.id else {
+            await MainActor.run { isLoadingPosts = false }
+            return
+        }
+        print("📥 [UserProfileView] loadUserPosts 入口 profileId=\(profileId)")
         await MainActor.run { isLoadingPosts = true }
         do {
-            let response = try await APIService.shared.getUserDynList(userId: targetUserId, publicTime: nil)
+            let response = try await APIService.shared.getUserDynList(userId: profileId, limit: 20, publicTime: nil)
             await MainActor.run {
                 posts = response.list
                 publicTime = response.publicTime
                 hasMore = response.hasMore
                 isLoadingPosts = false
             }
-            print("📥 [UserProfileView] loadUserPosts 成功 targetUserId=\(targetUserId), listCount=\(response.list.count), hasMore=\(response.hasMore)")
+            print("📥 [UserProfileView] loadUserPosts 成功 profileId=\(profileId), listCount=\(response.list.count), hasMore=\(response.hasMore)")
         } catch {
-            print("❌ [UserProfileView] loadUserPosts 失败 targetUserId=\(targetUserId), error=\(error)")
+            print("❌ [UserProfileView] loadUserPosts 失败 profileId=\(profileId), error=\(error)")
             await MainActor.run {
                 posts = []
                 isLoadingPosts = false
@@ -1230,12 +1280,15 @@ struct UserProfileView: View {
     }
     
     private func loadMorePosts() async {
-        let targetUserId = (effectiveIsOwnProfile ? userProfile?.id : nil) ?? userId
+        guard let profileId = userProfile?.id else {
+            await MainActor.run { isLoading = false }
+            return
+        }
         let cursor = publicTime
-        print("📥 [UserProfileView] loadMorePosts 入口 targetUserId=\(targetUserId), publicTime=\(cursor ?? 0)")
+        print("📥 [UserProfileView] loadMorePosts 入口 profileId=\(profileId), publicTime=\(cursor ?? 0)")
         await MainActor.run { isLoading = true }
         do {
-            let response = try await APIService.shared.getUserDynList(userId: targetUserId, publicTime: cursor)
+            let response = try await APIService.shared.getUserDynList(userId: profileId, limit: 20, publicTime: cursor)
             await MainActor.run {
                 let existingIds = Set(posts.map(\.id))
                 posts.append(contentsOf: response.list.filter { !existingIds.contains($0.id) })
@@ -1243,9 +1296,9 @@ struct UserProfileView: View {
                 hasMore = response.hasMore
                 isLoading = false
             }
-            print("📥 [UserProfileView] loadMorePosts 成功 targetUserId=\(targetUserId), appended=\(response.list.count), hasMore=\(response.hasMore)")
+            print("📥 [UserProfileView] loadMorePosts 成功 profileId=\(profileId), appended=\(response.list.count), hasMore=\(response.hasMore)")
         } catch {
-            print("❌ [UserProfileView] loadMorePosts 失败 targetUserId=\(targetUserId), error=\(error)")
+            print("❌ [UserProfileView] loadMorePosts 失败 profileId=\(profileId), error=\(error)")
             await MainActor.run { isLoading = false }
         }
     }
@@ -1269,43 +1322,71 @@ struct UserProfileView: View {
     
     // MARK: - 交互功能
     private func handleCharge(profile: UserProfile) async {
-        // 仅当明确已充电时不再请求；nil 视为未充电允许点击
-        guard profile.chargingStatus != true else {
+        // 已充电（含乐观更新）时不再请求
+        if profile.chargingStatus == true || chargingStatusOverride == true {
             return
         }
         
         do {
             _ = try await APIService.shared.chargeUser(userId: profile.id)
+            await MainActor.run {
+                chargingStatusOverride = true
+                chargeNumsOverride = (profile.chargeNums ?? 0) + 1
+            }
+            ToastManager.shared.success("充电成功")
             await loadUserProfile()
         } catch {
             if let apiErr = error as? APIError, apiErr.isAlreadyChargedError {
+                await MainActor.run {
+                    chargingStatusOverride = true
+                    chargeNumsOverride = (profile.chargeNums ?? 0) + 1
+                }
                 await loadUserProfile()
                 return
             }
             print("Failed to charge user: \(error)")
+            await MainActor.run {
+                ToastManager.shared.error("充电失败，请稍后重试")
+            }
         }
     }
     
     private func handleFollow(profile: UserProfile) async {
-        guard let followStatus = profile.followStatus else { return }
-        if case .isSelf = followStatus { return } // 本人不请求关注接口
+        // 与底部栏展示一致：profile.followStatus / isFollowing（兜底）/ fetchedFollowStatus
+        let effectiveFollowStatus: FollowStatus = profile.followStatus ?? (profile.isFollowing == true ? .following : nil) ?? fetchedFollowStatus ?? .notFollowing
+        if case .isSelf = effectiveFollowStatus { return }
         
+        let currentFollowerCount = profile.followerCount
         do {
-            switch followStatus {
+            switch effectiveFollowStatus {
             case .isSelf:
-                return // 已在上方 guard 处理，此处满足穷尽性
+                return
             case .notFollowing, .followBack:
                 _ = try await APIService.shared.followUser(userId: profile.id)
+                await MainActor.run {
+                    fetchedFollowStatus = .following
+                    followerCountOverride = currentFollowerCount + 1
+                }
+                ToastManager.shared.success("关注成功")
+                await loadUserProfile()
             case .following, .mutual:
                 _ = try await APIService.shared.unfollowUser(userId: profile.id)
+                await MainActor.run {
+                    fetchedFollowStatus = .notFollowing
+                    followerCountOverride = max(0, currentFollowerCount - 1)
+                }
+                ToastManager.shared.success("已取消关注")
+                await loadUserProfile()
             }
-            await loadUserProfile()
         } catch {
             if let apiErr = error as? APIError, apiErr.isAlreadyFollowedError {
                 await loadUserProfile()
                 return
             }
             print("Failed to follow/unfollow user: \(error)")
+            await MainActor.run {
+                ToastManager.shared.error("操作失败，请稍后重试")
+            }
         }
     }
     
@@ -1335,75 +1416,6 @@ private struct PrivateChatDestination: Identifiable, Hashable {
     let targetOpenId: String
     let title: String
     let fromPhoto: String?
-}
-
-// MARK: - 更多操作项（与底部弹窗配合）
-private struct ActionSheetItem {
-    let title: String
-    let action: () -> Void
-}
-
-// MARK: - 更多操作底部弹窗
-private struct MoreActionBottomSheet: View {
-    let items: [ActionSheetItem]
-    let onDismiss: () -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: 2.5)
-                .fill(Color(hex: "#3D3D3D"))
-                .frame(width: 36, height: 5)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
-
-            Text("更多操作")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(Color(hex: "#71767A"))
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 16)
-
-            VStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    Button(action: {
-                        item.action()
-                        onDismiss()
-                        dismiss()
-                    }) {
-                        Text(item.title)
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 20)
-                    }
-                    .buttonStyle(.plain)
-                    if index != items.count - 1 {
-                        Divider()
-                            .background(Color(hex: "#2F3336"))
-                            .padding(.leading, 20)
-                    }
-                }
-            }
-            .background(Color(hex: "#1A1A1A"))
-
-            Button(action: {
-                onDismiss()
-                dismiss()
-            }) {
-                Text("取消")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Color(hex: "#71767A"))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-            }
-            .padding(.top, 8)
-            .padding(.bottom, 24)
-        }
-        .background(Color.black)
-        .presentationDetents([.height(CGFloat(items.count * 50 + 120))])
-        .presentationDragIndicator(.hidden)
-    }
 }
 
 // MARK: - 管理员设置用户状态

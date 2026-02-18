@@ -5,7 +5,7 @@ const cloud = require('wx-server-sdk');
 
 const { success, error } = require('../utils/response');
 const { convertDynListUrls, convertDynUrls, convertCommentUrls } = require('../utils/url');
-const { getFuncName } = require('../utils/env');
+const { getFuncName, initCloudBySource, initCallEnvToSelf } = require('../utils/env');
 
 /**
  * 将核心层返回的动态数据转换为App格式
@@ -186,11 +186,16 @@ function convertDynToAppFormat(dyn, currentOpenId) {
     isCharged: Boolean(isLiked),   // 充电走点赞逻辑，已点赞即已充电
     repostPost: repostPost,
     likeUsers: (dyn.like && Array.isArray(dyn.like) && dyn.like.length > 0)
-      ? dyn.like.map(u => ({
-          id: u.openId || u._id || u.id || '',
-          userName: u.nickName || u.userName || '',
-          avatar: u.avatarVisitUrl || u.avatarUrl || u.avatar || null
-        })).filter(u => u.id)
+      ? (() => {
+          const seen = new Set();
+          return dyn.like
+            .map(u => ({
+              id: u.openId || u._id || u.id || '',
+              userName: u.nickName || u.userName || '',
+              avatar: u.avatarVisitUrl || u.avatarUrl || u.avatar || null
+            }))
+            .filter(u => u.id && !seen.has(u.id) && seen.add(u.id));
+        })()
       : null,
     joinCount: null,    // 需要额外查询参与记录数
     circleId: dyn.circleId || null,
@@ -421,7 +426,8 @@ async function PublishDyn(event) {
       topic = [],
       ait = [],
       music,
-      dynVideo
+      dynVideo,
+      isSecret
     } = data || {};
 
     if (!dynContent && imageIds.length === 0 && !dynVideo) {
@@ -432,7 +438,7 @@ async function PublishDyn(event) {
       return error(400, "缺少圈子信息");
     }
 
-    // App 发布打标 source，便于列表/详情展示时不做 topic/ait 拼接（App 正文已含 #/@）
+    // App 发布打标 source；isSecret 用于 getCircle 未命中时仍按树洞写 dynStatus=2，仅电站展示
     const coreParams = {
       openId: openId,
       dynContent: dynContent || '',
@@ -442,7 +448,8 @@ async function PublishDyn(event) {
       topic: topic,
       ait: ait,
       source: 'newApp',
-      requestId: event.requestId || ''
+      requestId: event.requestId || '',
+      isSecret: isSecret === true || isSecret === 1
     };
 
     if (music) {
@@ -479,7 +486,8 @@ async function PublishDyn(event) {
       dynId: result.result.dynId,
       requestID: result.result.requestID,
       code: result.result.code,
-      message: result.result.message || '发布成功'
+      message: result.result.message || '发布成功',
+      dynStatus: result.result.dynStatus
     });
   } catch (err) {
     console.error(`[reqId=${reqId}][appPublishDyn] 错误:`, err.message, err.stack);
@@ -596,14 +604,16 @@ async function DeleteDyn(event) {
       return error(400, "缺少动态ID");
     }
 
-    // 调用核心层
+    // 调用核心层（传 source: 'newApp' 使 delDynV201 使用 event.openId；传 envId 与详情/列表同库，避免「帖子不存在」）
     const result = await cloud.callFunction({
       name: getFuncName('delDyn'),
       data: {
         id: id,
         type: 1, // 1=删除动态
         openId: openId,
-        requestId: event.requestId || ''
+        source: 'newApp',
+        requestId: event.requestId || '',
+        envId: event.envId || undefined
       }
     });
 
@@ -1296,32 +1306,69 @@ async function UnfavoriteDyn(event) {
 
 /**
  * 个人主页置顶/取消置顶
- * 核心层: setDynAction, type=16 置顶, type=15 取消置顶
+ * 直接更新 dyn 集合的 userTopTime，不依赖不存在的 setDynActionV201
  */
 async function SetUserProfilePin(event) {
   try {
-    const { openId, data } = event;
+    const { openId, data, db } = event;
     const { postId, pin } = (data || {});
     if (!postId) return error(400, "缺少动态ID");
-    const type = pin ? 16 : 15; // 16=个人主页置顶, 15=取消个人主页置顶
-    const result = await cloud.callFunction({
-      name: getFuncName('setDynAction'),
-      data: {
-        type,
-        dynId: postId,
-        source: 'newApp',
-        openId,
-        requestId: event.requestId || ''
-      }
+    if (!db) return error(500, "数据库未初始化");
+
+    const doc = await db.collection('dyn').doc(postId).get();
+    const dyn = doc.data;
+    if (!dyn) return error(404, "动态不存在");
+    if (dyn.openId !== openId) return error(403, "只能操作自己的动态");
+
+    const userTopTime = pin ? Date.now() : 0;
+    const updateRes = await db.collection('dyn').doc(postId).update({
+      data: { userTopTime }
     });
-    const res = result.result;
-    if (res && res.code !== 200) {
-      return error(res.code || 500, res.message || (pin ? "置顶失败" : "取消置顶失败"));
-    }
+    if (updateRes.stats && updateRes.stats.updated !== 1) return error(500, pin ? "置顶失败" : "取消置顶失败");
     return success({});
   } catch (err) {
     console.error('[appSetUserProfilePin] error:', err);
     return error(500, err.message || "操作失败");
+  }
+}
+
+/**
+ * 举报动态
+ * 直接写入 dyn_tip 集合，不依赖不存在的 setDynActionV201（与置顶逻辑一致）
+ * type=10 表示举报，tipsType=1 表示动态举报
+ */
+async function ReportDyn(event) {
+  try {
+    const { openId, data } = event;
+    const { id: dynId, circleId, tipsReason, tipsDesc, tipsImageIds } = data || {};
+    if (!dynId || !tipsReason) {
+      return error(400, "缺少动态ID或举报原因");
+    }
+    const { db } = initCloudBySource(event.source || 'newApp', event.context, event.dataEnv);
+    initCallEnvToSelf(event.context);
+
+    const tipRecord = {
+      type: 10,
+      tipsType: 1,
+      dynId,
+      circleId: circleId || undefined,
+      tipsReason,
+      tipsDesc: (tipsDesc != null && tipsDesc !== "") ? tipsDesc : " ",
+      tipsImageIds: Array.isArray(tipsImageIds) ? tipsImageIds : [],
+      source: 'newApp',
+      openId,
+      requestId: event.requestId || '',
+      createTime: Date.now()
+    };
+
+    const addRes = await db.collection('dyn_tip').add({ data: tipRecord });
+    if (addRes.errMsg && addRes.errMsg === 'collection.add:ok') {
+      return success({ tipId: addRes._id });
+    }
+    return error(500, "举报提交失败");
+  } catch (err) {
+    console.error('[appReportDyn] error:', err);
+    return error(500, err.message || "举报提交失败");
   }
 }
 
@@ -1340,6 +1387,7 @@ module.exports = {
   FavoriteDyn,
   UnfavoriteDyn,
   SetUserProfilePin,
+  ReportDyn,
   // 供 circle 等模块复用：先转 App 格式 + URL 转换 + 统一 publicTime
   convertDynToAppFormat,
   toMillisTimestamp

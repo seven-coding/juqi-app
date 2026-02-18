@@ -20,6 +20,8 @@ class AuthService: ObservableObject {
     
     @Published var authState: AuthState = .notAuthenticated
     @Published var currentUserStatus: UserStatus?
+    /// 当前用户 openId（登录时持久化到 Keychain，用于关注列表等接口；UserStatus 不含 openId）
+    var currentUserOpenId: String? { KeychainHelper.getOpenId() }
     @Published var lastAuthError: String?
     
     private var token: String? {
@@ -125,6 +127,20 @@ class AuthService: ObservableObject {
             print("⚠️ [Token] Refresh at launch failed: \(error)")
         }
     }
+
+    /// 收到 401 时尝试刷新 token 一次（用于充电/关注等操作重试前），不登出；失败则抛出，由调用方决定是否登出
+    @MainActor
+    func refreshTokenOnce() async throws {
+        guard token != nil else { throw APIError.tokenExpired }
+        let data: RefreshTokenData = try await NetworkService.shared.request(
+            operation: "appRefreshToken",
+            data: [:],
+            needsToken: true,
+            useCache: false
+        )
+        saveToken(data.token)
+        print("🔄 [Token] Refreshed after 401, retrying operation")
+    }
     
     /// 登录（微信授权后调用）
     @MainActor
@@ -140,6 +156,7 @@ class AuthService: ObservableObject {
         )
 
         saveToken(data.token)
+        _ = KeychainHelper.saveOpenId(data.openId)
         currentUserStatus = UserStatus(
             joinStatus: UserJoinStatus(rawValue: data.joinStatus) ?? .normal,
             vipStatus: data.vipStatus,
@@ -206,6 +223,7 @@ class AuthService: ObservableObject {
                 )
             }
             saveToken(data.token)
+            _ = KeychainHelper.saveOpenId(data.openId)
             currentUserStatus = UserStatus(
                 joinStatus: UserJoinStatus(rawValue: data.joinStatus) ?? .normal,
                 vipStatus: data.vipStatus,

@@ -46,6 +46,12 @@ struct UserSelectorView: View {
             
             if isLoading {
                 ProgressView().padding()
+            } else if userList.isEmpty {
+                Text("输入昵称搜索要 @ 的用户")
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.4))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 32)
             }
             
             ScrollView {
@@ -111,7 +117,7 @@ struct UserSelectorView: View {
         }
         .background(Color(hex: "#1A1A1A"))
         .onAppear {
-            if userList.isEmpty { Task { await searchUsers() } }
+            // 不自动用空关键词请求（appSearchUser 要求有关键词）；用户输入后 onSubmit 再搜
         }
     }
     

@@ -64,7 +64,8 @@ struct CircleDetailView: View {
             PublishView(
                 activeTab: .constant(.discover),
                 initialCircleId: circleId,
-                initialCircleTitle: circleDetail?.title ?? circleTitle ?? (displayTitle.isEmpty ? nil : displayTitle)
+                initialCircleTitle: circleDetail?.title ?? circleTitle ?? (displayTitle.isEmpty ? nil : displayTitle),
+                initialCircleIsSecret: circleDetail?.isSecret == true
             )
         }
         .task {
@@ -81,6 +82,10 @@ struct CircleDetailView: View {
         }
         .navigationDestination(item: $selectedTopicName) { topicName in
             TopicDetailView(topicName: topicName)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PostPublished"))) { _ in
+            // 发布成功后若当前是电站页（从电站进发布会 dismiss 回到此页），刷新列表以显示新发布内容
+            Task { await refreshFeed() }
         }
     }
 

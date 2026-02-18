@@ -34,6 +34,11 @@ exports.errorCode = {
     code: 400,
     message: "抱歉，微信审核当前文字部分有敏感内容，无法发布"
   },
+  /** 仅当微信接口非 87014 时使用，避免把网络/权限等错误误报为敏感内容 */
+  SEC_CHECK_UNAVAILABLE: {
+    code: 503,
+    message: "审核服务暂时不可用，请稍后再试"
+  },
   NO_FORWARD: {
     code: 400,
     message: "暂时不允许转发哦"

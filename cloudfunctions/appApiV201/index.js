@@ -216,7 +216,8 @@ exports.main = async (event, context) => {
                normalizedOperation.startsWith('appChargeDyn') || 
                normalizedOperation.startsWith('appFavoriteDyn') || 
                normalizedOperation.startsWith('appUnfavoriteDyn') ||
-               normalizedOperation.startsWith('appSetUserProfilePin')) {
+               normalizedOperation.startsWith('appSetUserProfilePin') ||
+               normalizedOperation.startsWith('appReportDyn')) {
       module = MODULES.dyn;
     } else if (normalizedOperation.startsWith('appGetCircle') || 
                normalizedOperation.startsWith('appGetTopic') || 

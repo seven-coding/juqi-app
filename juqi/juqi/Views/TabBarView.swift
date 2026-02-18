@@ -8,6 +8,12 @@
 import SwiftUI
 import UIKit
 
+/// 发现页程序化跳转到电站详情时使用的路径类型（如发布到非日常后回到该电站）
+private struct CircleRoute: Hashable {
+    let circleId: String
+    let circleTitle: String?
+}
+
 struct TabBarView: View {
     @State private var selectedTab: TabItem = .home
     @State private var lastNonPublishTab: TabItem = .home
@@ -45,6 +51,9 @@ struct TabBarView: View {
                     // 发现
                     NavigationStack(path: $discoverNavigationPath) {
                         DiscoverView()
+                            .navigationDestination(for: CircleRoute.self) { route in
+                                CircleDetailView(circleId: route.circleId, circleTitle: route.circleTitle)
+                            }
                     }
                     .background(TabBarVisibilityReader(isHidden: $isTabBarHidden)
                         .frame(width: 0, height: 0))
@@ -102,6 +111,16 @@ struct TabBarView: View {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SwitchToMessageTab"))) { _ in
                     selectedTab = .message
+                }
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PostPublishedToCircle"))) { notification in
+                    guard let circleId = notification.userInfo?["circleId"] as? String else { return }
+                    let circleTitle = notification.userInfo?["circleTitle"] as? String
+                    selectedTab = .discover
+                    discoverNavigationPath.append(CircleRoute(circleId: circleId, circleTitle: circleTitle))
+                    // 等 sheet 关闭且电站页 push 完成后再发 PostPublished，让电站页刷新显示新动态
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NotificationCenter.default.post(name: NSNotification.Name("PostPublished"), object: nil)
+                    }
                 }
                 
             }

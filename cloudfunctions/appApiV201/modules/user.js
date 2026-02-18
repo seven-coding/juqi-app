@@ -183,39 +183,41 @@ async function GetCurrentUserProfile(event) {
 
     const userInfo = result.result.userInfo || result.result.data;
 
-    // 稳定用户 id 与统计数据：dataEnv=prod 时 login 返回的是测试环境数据，id/粉丝/关注/收藏/邀请/拉黑等均需用生产库重新取。
+    // 稳定用户 id 与统计数据：有 db 时（prod 或 test）均用当前环境库做实时统计，保证与列表接口一致；dataEnv=prod 时另用生产库 _id 作为 profile.id。
     let stableUserId = userInfo._id || userInfo.openId || openId;
     const dataEnv = event.dataEnv || 'test';
-    let prodOverrides = null; // dataEnv=prod 时从生产库查得的 id + 各类统计，用于覆盖 login 返回值
-    if (dataEnv === 'prod' && db) {
+    let statsOverrides = null; // 从当前环境 db 查得的统计，用于覆盖 login 返回值（关注/粉丝/发布/收藏/拉黑/邀请/电量）
+    if (db) {
       try {
-        const prodUserRes = await db.collection('user').where({ openId }).limit(1).get();
-        if (prodUserRes.data && prodUserRes.data.length > 0) {
-          const prodUser = prodUserRes.data[0];
-          if (prodUser._id) {
-            stableUserId = prodUser._id;
-            console.log(`[reqId=${reqId}][appGetCurrentUserProfile] dataEnv=prod，已用生产库 _id 作为 profile.id`);
-          }
-          // 粉丝数、关注数、发布数、收藏、邀请、拉黑：均从生产库实时统计或从生产 user 表取，与 GetUserProfile 一致
-          const [followCountRes, followerCountRes, publishCountRes, collectionCountRes, blockedCountRes] = await Promise.all([
-            db.collection('user_followee').where({ openId, status: 1 }).count(),
-            db.collection('user_followee').where({ followeeId: openId, status: 1 }).count(),
-            db.collection('dyn').where({ openId }).count(),
-            db.collection('dynFavorite').where({ openId, favoriteFlag: '0' }).count(),
-            db.collection('user_black').where({ openId }).count()
-          ]);
-          prodOverrides = {
-            followCount: followCountRes.total ?? 0,
-            followerCount: followerCountRes.total ?? 0,
-            publishCount: publishCountRes.total ?? prodUser.dynNums ?? prodUser.publishCount ?? 0,
-            collectionCount: collectionCountRes.total ?? prodUser.collectionCount ?? 0,
-            inviteCount: prodUser.inviteCount ?? 0,
-            blockedCount: blockedCountRes.total ?? prodUser.blockedCount ?? 0
-          };
-          console.log(`[reqId=${reqId}][appGetCurrentUserProfile] dataEnv=prod，已从生产库填充统计:`, prodOverrides);
+        const userRes = await db.collection('user').where({ openId }).limit(1).get();
+        const currentUser = userRes.data && userRes.data.length > 0 ? userRes.data[0] : null;
+        if (dataEnv === 'prod' && currentUser && currentUser._id) {
+          stableUserId = currentUser._id;
+          console.log(`[reqId=${reqId}][appGetCurrentUserProfile] dataEnv=prod，已用生产库 _id 作为 profile.id`);
         }
+        // 关注数、粉丝数、发布数、收藏、拉黑：从当前环境库实时统计；电量、邀请数从 user 表取
+        const [followCountRes, followerCountRes, publishCountRes, collectionCountRes, blockedCountRes] = await Promise.all([
+          db.collection('user_followee').where({ openId, status: 1 }).count(),
+          db.collection('user_followee').where({ followeeId: openId, status: 1 }).count(),
+          db.collection('dyn').where({ openId }).count(),
+          db.collection('dynFavorite').where({ openId, favoriteFlag: '0' }).count(),
+          db.collection('user_black').where({ openId }).count()
+        ]);
+        statsOverrides = {
+          followCount: followCountRes.total ?? 0,
+          followerCount: followerCountRes.total ?? 0,
+          publishCount: publishCountRes.total ?? (currentUser && (currentUser.dynNums ?? currentUser.publishCount)) ?? 0,
+          collectionCount: collectionCountRes.total ?? (currentUser && currentUser.collectionCount) ?? 0,
+          inviteCount: (currentUser && currentUser.inviteCount) ?? 0,
+          blockedCount: blockedCountRes.total ?? (currentUser && currentUser.blockedCount) ?? 0,
+          chargeNums: (currentUser && (currentUser.chargeNums != null)) ? (typeof currentUser.chargeNums === 'number' ? currentUser.chargeNums : parseInt(currentUser.chargeNums, 10) || 0) : undefined
+        };
+        if (statsOverrides.chargeNums === undefined) {
+          delete statsOverrides.chargeNums;
+        }
+        console.log(`[reqId=${reqId}][appGetCurrentUserProfile] dataEnv=${dataEnv}，已从当前库填充统计:`, statsOverrides);
       } catch (e) {
-        console.warn(`[reqId=${reqId}][appGetCurrentUserProfile] dataEnv=prod 时查生产 user/统计失败，沿用 login 返回:`, e.message);
+        console.warn(`[reqId=${reqId}][appGetCurrentUserProfile] 查 user/统计失败，沿用 login 返回:`, e.message);
       }
     }
 
@@ -248,8 +250,8 @@ async function GetCurrentUserProfile(event) {
       userName: userInfo.nickName || userInfo.userName || '未知用户',
       avatar: avatarUrl,
       isVip: !!isVip,
-      followCount: prodOverrides ? prodOverrides.followCount : toInt(userInfo.followCount || userInfo.followNums),
-      followerCount: prodOverrides ? prodOverrides.followerCount : toInt(userInfo.followerCount || userInfo.fansNums),
+      followCount: statsOverrides ? statsOverrides.followCount : toInt(userInfo.followCount || userInfo.followNums),
+      followerCount: statsOverrides ? statsOverrides.followerCount : toInt(userInfo.followerCount || userInfo.fansNums),
       
       // 可选字段（与小程序/数据库字段一致）
       signature: userInfo.signature || null,
@@ -259,8 +261,8 @@ async function GetCurrentUserProfile(event) {
       city: userInfo.city || null,
       isFollowing: false,
       isCharged: false,
-      chargeCount: toInt(userInfo.chargeNums),
-      chargeNums: toInt(userInfo.chargeNums),
+      chargeCount: (statsOverrides && statsOverrides.chargeNums !== undefined) ? statsOverrides.chargeNums : toInt(userInfo.chargeNums),
+      chargeNums: (statsOverrides && statsOverrides.chargeNums !== undefined) ? statsOverrides.chargeNums : toInt(userInfo.chargeNums),
       followStatus: toInt(userInfo.followStatus) || 1,
       chargingStatus: !!userInfo.chargingStatus,
       // iOS UserJoinStatus 枚举值: 1=normal, 2=pending, 3=pendingVoice, -1=deleted, -2=banned
@@ -278,11 +280,11 @@ async function GetCurrentUserProfile(event) {
       // 明确标记本人，避免客户端用 id/ownOpenId 比较时因 id 为生产库 _id 而误判
       isOwnProfile: true,
 
-      // 统计数据（dataEnv=prod 时已用生产库统计覆盖）
-      publishCount: prodOverrides ? prodOverrides.publishCount : toInt(result.result.publishCount || userInfo.publishCount),
-      collectionCount: prodOverrides ? prodOverrides.collectionCount : toInt(userInfo.collectionCount),
-      inviteCount: prodOverrides ? prodOverrides.inviteCount : toInt(userInfo.inviteCount),
-      blockedCount: prodOverrides ? prodOverrides.blockedCount : toInt(userInfo.blockedCount),
+      // 统计数据（有 db 时已用当前环境库统计覆盖）
+      publishCount: statsOverrides ? statsOverrides.publishCount : toInt(result.result.publishCount || userInfo.publishCount),
+      collectionCount: statsOverrides ? statsOverrides.collectionCount : toInt(userInfo.collectionCount),
+      inviteCount: statsOverrides ? statsOverrides.inviteCount : toInt(userInfo.inviteCount),
+      blockedCount: statsOverrides ? statsOverrides.blockedCount : toInt(userInfo.blockedCount),
       // 当前用户是否为管理员（用于个人主页更多菜单是否展示管理入口）
       admin: !!(userInfo.auth && (userInfo.auth.admin || userInfo.auth.superAdmin || userInfo.auth.censor))
     };
@@ -499,6 +501,25 @@ async function GetUserProfile(event) {
     const fullUserResult = await db.collection('user').where({ openId: resolvedOpenId }).get();
     const fullUser = fullUserResult.data.length > 0 ? fullUserResult.data[0] : null;
 
+    // 2.1 他人主页：当前用户是否已给该用户充电（今日），与 chargeHer 一致：messagesOther to=被充电人 from=充电人 type=1 chargeType=2
+    let chargingStatus = null;
+    if (resolvedOpenId !== currentOpenId) {
+      try {
+        const _ = db.command;
+        const startOfToday = new Date(new Date().toLocaleDateString()).getTime();
+        const chargeTodayRes = await db.collection('messagesOther').where({
+          to: resolvedOpenId,
+          from: currentOpenId,
+          type: 1,
+          chargeType: 2,
+          createTime: _.gte(startOfToday)
+        }).count();
+        chargingStatus = (chargeTodayRes.total || 0) > 0;
+      } catch (e) {
+        console.warn('[appGetUserProfile] messagesOther 充电状态查询失败', e.message);
+      }
+    }
+
     // 3. 返回用稳定用户 id（优先 _id），与登录方式解耦；与客户端 UserProfile 解码一致：data 即 profile 对象（含 id、followCount、followerCount 等）
     // 个性签名、星座、地理位置：与小程序/数据库字段一致。小程序个性签名字段为 labels，星座为 xingzuo
     const signature = (userData.signature && String(userData.signature).trim()) || (userData.labels && String(userData.labels).trim()) || (fullUser?.signature && String(fullUser.signature).trim()) || (fullUser?.labels && String(fullUser.labels).trim()) || null;
@@ -549,7 +570,8 @@ async function GetUserProfile(event) {
       blockedCount: userData.blockedCount ?? null,
       vipStatus: (userData.usersSecret && userData.usersSecret[0] && userData.usersSecret[0].vipStatus) ?? null,
       vipConfig: (userData.usersSecret && userData.usersSecret[0] && userData.usersSecret[0].vipConfig) ?? null,
-      chargingStatus: (userData.usersSecret && userData.usersSecret[0] && userData.usersSecret[0].chargingStatus) ?? null
+      // 他人主页：由 messagesOther 实时查询「当前用户是否已给该用户充电（今日）」；本人或查询失败时用 usersSecret
+      chargingStatus: chargingStatus !== null ? chargingStatus : ((userData.usersSecret && userData.usersSecret[0] && userData.usersSecret[0].chargingStatus) ?? null)
     };
 
     // 如果是自己的信息，返回会员状态和VIP配置
@@ -1099,21 +1121,37 @@ async function GetUserList(event) {
 /**
  * 更新用户信息
  * 核心层: updateUserInfo
+ * 客户端资料设置传 userName，此处映射为 nickName；头像传 avatar，核心层用 avatarUrl 生成访问 URL
  */
 async function UpdateUserInfo(event) {
   try {
     const { openId, data, db } = event;
 
     const updateData = {
+      source: 'newApp',
       openId: openId
     };
 
-    if (data.nickName !== undefined) updateData.nickName = data.nickName;
-    if (data.avatar !== undefined) updateData.avatar = data.avatar;
+    // 资料设置页传 userName，与 nickName 二选一
+    const nick = data.userName !== undefined ? data.userName : data.nickName;
+    if (nick !== undefined) updateData.nickName = nick;
+    if (data.avatar !== undefined) {
+      updateData.avatar = data.avatar;
+      // 核心层用 avatarUrl 生成 avatarVisitUrl（云存储临时链接）
+      const avatarStr = Array.isArray(data.avatar) ? data.avatar[0] : data.avatar;
+      if (avatarStr && typeof avatarStr === 'string' && avatarStr.includes('cloud')) {
+        updateData.avatarUrl = avatarStr;
+      }
+    }
     if (data.birthDay !== undefined) updateData.birthDay = data.birthDay;
     if (data.city !== undefined) updateData.city = data.city;
     if (data.signature !== undefined) updateData.signature = data.signature;
     if (data.gender !== undefined) updateData.gender = data.gender;
+    if (data.constellation !== undefined) updateData.constellation = data.constellation;
+    if (data.mbti !== undefined) updateData.mbti = data.mbti;
+    if (data.relationshipStatus !== undefined) updateData.relationshipStatus = data.relationshipStatus;
+    if (data.school !== undefined) updateData.school = data.school;
+    if (data.imgList !== undefined) updateData.imgList = data.imgList;
     updateData.requestId = event.requestId || '';
 
     const result = await cloud.callFunction({

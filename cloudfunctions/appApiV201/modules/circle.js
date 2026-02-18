@@ -7,6 +7,7 @@ const { success, error } = require('../utils/response');
 const { convertDynListUrls } = require('../utils/url');
 const { convertDynToAppFormat, toMillisTimestamp } = require('./dyn');
 const { getFuncName } = require('../utils/env');
+const { mapTopicForClient } = require('./search');
 
 /** App 发现页允许展示的电站名称（仅显示以下电站；日常已屏蔽） */
 const APP_VISIBLE_CIRCLE_NAMES = new Set([
@@ -212,7 +213,8 @@ async function GetTopicList(event) {
       name: getFuncName('getTopic'),
       data: {
         openId: openId,
-        requestId: event.requestId || ''
+        requestId: event.requestId || '',
+        type: 2  // 2=默认/推荐话题，取 recommend: true
       }
     });
 
@@ -226,9 +228,9 @@ async function GetTopicList(event) {
       return error(result.result.code || 500, result.result.message || '获取话题列表失败');
     }
 
-    return success({
-      list: result.result.data || result.result.list || []
-    });
+    const raw = result.result.data || result.result.list || [];
+    const list = Array.isArray(raw) ? raw.map(mapTopicForClient) : [];
+    return success({ list });
   } catch (err) {
     console.error('[appGetTopicList] error:', err);
     return error(500, err.message || '服务器错误');
@@ -369,19 +371,21 @@ async function GetTopicDynList(event) {
 async function CreateTopic(event) {
   try {
     const { openId, data, db } = event;
-    const { topic } = data || {};
-
-    if (!topic) {
+    const rawTopic = data?.topic;
+    if (rawTopic == null || String(rawTopic).trim() === '') {
       return error(400, "缺少话题名称");
     }
+    const topic = String(rawTopic).trim();
 
-    // 调用核心层
+    // 调用核心层（type: 1 = 增加话题）
     const result = await cloud.callFunction({
       name: getFuncName('setTopic'),
       data: {
-        topic: topic,
-        openId: openId,
-        requestId: event.requestId || ''
+        type: 1,
+        topic: String(topic).trim(),
+        openId: openId || '',
+        requestId: event.requestId || '',
+        source: 'newApp'
       }
     });
 
@@ -392,12 +396,14 @@ async function CreateTopic(event) {
     }
 
     if (result.result.code !== 200) {
-      return error(result.result.code || 500, result.result.message || '创建话题失败');
+      const msg = result.result.message || result.result.messge || '创建话题失败';
+      return error(result.result.code || 500, msg);
     }
 
-    return success({
-      topic: result.result.data
-    });
+    // 客户端期望 data 为 Topic 格式（id, name, icon）
+    const raw = result.result.data;
+    const topicForClient = raw ? mapTopicForClient(raw) : { id: '', name: String(topic).trim(), icon: null };
+    return success(topicForClient);
   } catch (err) {
     console.error('[appCreateTopic] error:', err);
     return error(500, err.message || '服务器错误');

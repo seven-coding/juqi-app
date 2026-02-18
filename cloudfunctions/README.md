@@ -221,3 +221,4 @@ node wx-create-functions.js
 3. getCircleDetail 使用 id 参数，不是 circleId。
 4. 返回用户信息时需包含会员状态。
 5. getDynsListV2 内 dealBlackDyn 已对 openId 做防护，避免「查询参数对象值不能均为 undefined」。
+6. **个人主页动态超时（appGetUserDynList / type=4）**：若出现 DATABASE_TIMEOUT，请在云开发控制台为 **dyn** 集合建立复合索引：`openId`(升序)、`dynStatus`(升序)、`isDelete`(升序)、`userTopTime`(降序)、`publicTime`(降序)，以加速 match+sort+limit 的 aggregate 查询。

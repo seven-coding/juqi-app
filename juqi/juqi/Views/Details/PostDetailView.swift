@@ -50,6 +50,13 @@ struct PostDetailView: View {
     /// 当前用户是否为管理员（是则无论谁的帖子都显示管理入口）
     @State private var isCurrentUserAdmin = false
     @State private var showUnfollowConfirm = false
+    /// 举报：跳转至帖子举报页
+    @State private var showReportSheet = false
+    @State private var postToReport: Post?
+    /// 是否已举报当前帖子（仅本页内提交举报后为 true，不可取消）
+    @State private var hasReportedThisPost = false
+    /// 是否已拉黑当前帖子作者（进入时从拉黑列表同步，或本页拉黑/取消拉黑后更新）
+    @State private var isAuthorBlacked = false
     /// 发现页电站列表（用于判断帖子电站是否可跳转）
     @State private var discoverCircles: [CircleItem] = []
     @Environment(\.dismiss) var dismiss
@@ -196,6 +203,20 @@ struct PostDetailView: View {
                 onActionSelected: { handleAction($0) },
                 onDismiss: { showActionSheet = false }
             )
+        }
+        .fullScreenCover(isPresented: $showReportSheet) {
+            if let post = postToReport {
+                PostReportView(
+                    post: post,
+                    onDismiss: {
+                        showReportSheet = false
+                        postToReport = nil
+                    },
+                    onReportSubmitted: {
+                        hasReportedThisPost = true
+                    }
+                )
+            }
         }
         .confirmationDialog("取消关注", isPresented: $showUnfollowConfirm, titleVisibility: .visible) {
             Button("确定取消关注", role: .destructive) {
@@ -494,7 +515,7 @@ struct PostDetailView: View {
                 
                 Spacer()
                 
-                // 充电（电池图标 - 代替喜欢功能）
+                // 充电（电池图标 - 代替喜欢功能）：已充电时再次点击恢复未充电状态
                 ChargeButton(
                     isCharged: isCharged,
                     count: displayChargeCount,
@@ -503,26 +524,38 @@ struct PostDetailView: View {
                         generator.impactOccurred()
                         Task {
                             do {
-                                _ = try await APIService.shared.chargeDyn(id: post.id)
-                                await MainActor.run {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                                        isCharged = true
-                                        displayChargeCount += 1
+                                if isCharged {
+                                    _ = try await APIService.shared.unchargeDyn(id: post.id)
+                                    await MainActor.run {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                            isCharged = false
+                                            displayChargeCount = max(0, displayChargeCount - 1)
+                                        }
                                     }
+                                    await loadDetail()
+                                } else {
+                                    _ = try await APIService.shared.chargeDyn(id: post.id)
+                                    await MainActor.run {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                            isCharged = true
+                                            displayChargeCount += 1
+                                        }
+                                        ToastManager.shared.success("充电成功")
+                                    }
+                                    await loadDetail()
                                 }
-                                await loadDetail()
                             } catch let err as APIError {
-                                if err.isAlreadyChargedError {
+                                if !isCharged && err.isAlreadyChargedError {
                                     await MainActor.run {
                                         isCharged = true
                                         if displayChargeCount == 0 { displayChargeCount = 1 }
                                     }
                                 } else {
-                                    print("Failed to charge: \(err)")
+                                    await MainActor.run { ToastManager.shared.error(err.userMessage) }
                                     await loadDetail()
                                 }
                             } catch {
-                                print("Failed to charge: \(error)")
+                                await MainActor.run { ToastManager.shared.error(isCharged ? "取消充电失败，请稍后重试" : "充电失败，请稍后重试") }
                                 await loadDetail()
                             }
                         }
@@ -551,13 +584,11 @@ struct PostDetailView: View {
         }
     }
     
-    /// 充电列表展示用用户：接口返回的 likeUsers + 充电成功时当前用户（若尚未在列表中）放最前；当前用户先占位头像，等 loadDetail 返回 likeUsers 后显示真实头像
+    /// 充电列表展示用用户：以服务端返回的 likeUsers 为准，不插入当前用户；按 id 去重避免重复显示
     private func chargeListDisplayUsers(post: Post) -> [Post.LikeUser] {
         let fromApi = post.likeUsers ?? []
-        guard isCharged, let uid = currentUserId else { return fromApi }
-        if fromApi.contains(where: { $0.id == uid }) { return fromApi }
-        let current = Post.LikeUser(id: uid, userName: currentUserName, avatar: nil)
-        return [current] + fromApi
+        var seen = Set<String>()
+        return fromApi.filter { seen.insert($0.id).inserted }
     }
     
     // MARK: - 互动详情区
@@ -650,7 +681,7 @@ struct PostDetailView: View {
         HStack(spacing: 12) {
             Spacer()
             
-            // 回复输入框（固定宽度）
+            // 回复输入框（固定宽度；扩大可点击区域，避免仅文字可点）
             Button(action: {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                     showCommentInput = true
@@ -662,39 +693,52 @@ struct PostDetailView: View {
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .padding(.horizontal, 18)
-                .frame(width: 220, height: 64)
+                .frame(minWidth: 220, minHeight: 64)
+                .contentShape(Rectangle())
                 .background {
                     transparentLiquidGlassEffect(cornerRadius: 32)
                 }
             }
             .buttonStyle(PlainButtonStyle())
             
-            // 圆形充电按钮（未充电白色，已充电橘色，不显示数字）
+            // 圆形充电按钮（未充电白色，已充电橘色；已充电时再次点击恢复未充电状态）
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .medium)
                 generator.impactOccurred()
                 Task {
                     do {
-                        _ = try await APIService.shared.chargeDyn(id: post.id)
-                        await MainActor.run {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                                isCharged = true
-                                displayChargeCount += 1
+                        if isCharged {
+                            _ = try await APIService.shared.unchargeDyn(id: post.id)
+                            await MainActor.run {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                    isCharged = false
+                                    displayChargeCount = max(0, displayChargeCount - 1)
+                                }
                             }
+                            await loadDetail()
+                        } else {
+                            _ = try await APIService.shared.chargeDyn(id: post.id)
+                            await MainActor.run {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                    isCharged = true
+                                    displayChargeCount += 1
+                                }
+                                ToastManager.shared.success("充电成功")
+                            }
+                            await loadDetail()
                         }
-                        await loadDetail()
                     } catch let err as APIError {
-                        if err.isAlreadyChargedError {
+                        if !isCharged && err.isAlreadyChargedError {
                             await MainActor.run {
                                 isCharged = true
                                 if displayChargeCount == 0 { displayChargeCount = 1 }
                             }
                         } else {
-                            print("Failed to charge: \(err)")
+                            await MainActor.run { ToastManager.shared.error(err.userMessage) }
                             await loadDetail()
                         }
                     } catch {
-                        print("Failed to charge: \(error)")
+                        await MainActor.run { ToastManager.shared.error(isCharged ? "取消充电失败，请稍后重试" : "充电失败，请稍后重试") }
                         await loadDetail()
                     }
                 }
@@ -713,7 +757,9 @@ struct PostDetailView: View {
             Spacer()
         }
         .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .padding(.bottom, 0)
+        .contentShape(Rectangle())
     }
     
     // iOS 26 标准液态玻璃渲染效果（增强版，与首页保持一致）
@@ -799,7 +845,7 @@ struct PostDetailView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
-                        .background((commentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedCommentImage == nil) ? Color(hex: "#71767A") : Color(hex: "#4CAF50"))
+                        .background((commentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedCommentImage == nil) ? Color(hex: "#71767A") : Color(hex: "#FF6B35"))
                         .cornerRadius(20)
                 }
                 .disabled(commentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedCommentImage == nil)
@@ -1026,11 +1072,14 @@ struct PostDetailView: View {
         return "\(dateStr) · \(loc)"
     }
     
-    /// 发布在 xx 电站：与发现页同一数据源（appGetCircleList 白名单），按电站 id 匹配；icon + 电站名可跳转，否则显示「日常」不跳转
+    /// 发布在 xx 电站：与发现页同一数据源（appGetCircleList 白名单）；未获得电站数据前只显示 icon，获得后显示 icon+名称；非日常电站低饱和度蓝可跳转，日常灰色不跳转
     private func circleDisplayView(post: Post) -> some View {
         let matchedCircle = post.circleId.flatMap { cid in discoverCircles.first { $0.id == cid } }
+        let hasCircleData = !discoverCircles.isEmpty
         let displayName: String = matchedCircle?.title ?? "日常"
         let canNavigate = matchedCircle != nil
+        let isDaily = !canNavigate
+        let linkColor = isDaily ? Color(hex: "#71767A") : Color(hex: "#6B8CB0")
         
         return Group {
             if canNavigate, let circle = matchedCircle {
@@ -1038,21 +1087,25 @@ struct PostDetailView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "link.circle")
                             .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "#71767A"))
-                        Text(displayName)
-                            .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "#71767A"))
+                            .foregroundColor(linkColor)
+                        if hasCircleData {
+                            Text(displayName)
+                                .font(.system(size: 12))
+                                .foregroundColor(linkColor)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
-            } else if post.circleId != nil || (post.circleTitle != nil && !(post.circleTitle?.isEmpty ?? true)) {
+            } else {
                 HStack(spacing: 4) {
                     Image(systemName: "link.circle")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "#71767A"))
-                    Text("日常")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "#71767A"))
+                        .foregroundColor(linkColor)
+                    if hasCircleData {
+                        Text("日常")
+                            .font(.system(size: 12))
+                            .foregroundColor(linkColor)
+                    }
                 }
             }
         }
@@ -1078,8 +1131,14 @@ struct PostDetailView: View {
                 errorMessage = nil
                 detailPost = detail
                 displayCommentCount = detail.commentCount
-                displayChargeCount = detail.chargeCount
-                isCharged = detail.isCharged
+                // 充电状态：若当前已是已充电而接口返回未充电（可能延迟/缓存），保留本地状态不覆盖，避免充电成功后又闪回未充电
+                if isCharged && !detail.isCharged {
+                    displayChargeCount = max(displayChargeCount, detail.chargeCount)
+                    // isCharged 保持 true 不变
+                } else {
+                    displayChargeCount = detail.chargeCount
+                    isCharged = detail.isCharged
+                }
                 currentUserId = userProfile.id
                 currentUserName = userProfile.userName
                 currentUserAvatar = userProfile.avatar
@@ -1104,6 +1163,14 @@ struct PostDetailView: View {
                     case .mutual: followStatus = 4
                     }
                     isFollowing = status == .following || status == .followBack || status == .mutual
+                }
+                // 同步是否已拉黑当前帖子作者（用于更多菜单显示「取消拉黑」）
+                do {
+                    let blackResp = try await APIService.shared.getBlackList(userId: userProfile.id, page: 1, limit: 100)
+                    let blacked = blackResp.list.contains { $0.id == detail.userId }
+                    await MainActor.run { isAuthorBlacked = blacked }
+                } catch {
+                    // 静默失败，保持 isAuthorBlacked 默认 false
                 }
             }
         } catch {
@@ -1231,11 +1298,11 @@ struct PostDetailView: View {
                 isDestructive: false
             ))
         }
-        // 本人帖子：个人主页置顶/取消置顶、删除
+        // 本人帖子：个人主页置顶/取消置顶、删除（已置顶时 icon 用面型与已收藏一致）
         if followStatus == 0 {
             items.append(ActionSheetView.ActionItem(
                 title: isPinned ? "取消个人主页置顶" : "个人主页置顶",
-                icon: "pin",
+                icon: isPinned ? "pin.fill" : "pin",
                 isDestructive: false
             ))
             items.append(ActionSheetView.ActionItem(
@@ -1244,15 +1311,29 @@ struct PostDetailView: View {
                 isDestructive: true
             ))
         } else {
-            // 举报
-            items.append(ActionSheetView.ActionItem(
-                title: "举报",
-                icon: "exclamationmark.triangle",
-                isDestructive: true
-            ))
+            // 举报：已举报则显示「已举报」面形图标+文案，位置不变
+            if hasReportedThisPost {
+                items.append(ActionSheetView.ActionItem(
+                    title: "已举报",
+                    icon: "exclamationmark.triangle.fill",
+                    isDestructive: false
+                ))
+            } else {
+                items.append(ActionSheetView.ActionItem(
+                    title: "举报",
+                    icon: "exclamationmark.triangle",
+                    isDestructive: true
+                ))
+            }
             
-            // 拉黑（如果不是已关注用户）
-            if followStatus != 2 && followStatus != 4 {
+            // 拉黑：已拉黑显示「取消拉黑」面形图标+文案，位置不变；未拉黑且非互关则显示「拉黑」
+            if isAuthorBlacked {
+                items.append(ActionSheetView.ActionItem(
+                    title: "取消拉黑",
+                    icon: "person.crop.circle.fill.badge.minus",
+                    isDestructive: false
+                ))
+            } else if followStatus != 2 && followStatus != 4 {
                 items.append(ActionSheetView.ActionItem(
                     title: "拉黑",
                     icon: "person.crop.circle.badge.minus",
@@ -1273,7 +1354,16 @@ struct PostDetailView: View {
         case "删除":
             deletePost(detailPost)
         case "举报":
-            reportPost(detailPost)
+            postToReport = detailPost
+            showActionSheet = false
+            showReportSheet = true
+        case "已举报":
+            // 仅展示，不可取消
+            break
+        case "取消拉黑":
+            Task {
+                await unblackUser(detailPost.userId)
+            }
         case "收藏":
             Task {
                 await toggleCollect(detailPost)
@@ -1308,9 +1398,12 @@ struct PostDetailView: View {
             await MainActor.run {
                 isPinned = pin
                 NotificationCenter.default.post(name: Notification.Name("PostDetailDidPinChange"), object: nil)
+                ToastManager.shared.success(pin ? "已置顶到个人主页" : "已取消置顶")
             }
         } catch {
-            print("个人主页置顶失败: \(error)")
+            await MainActor.run {
+                ToastManager.shared.error((error as? APIError)?.userMessage ?? (pin ? "置顶失败，请稍后重试" : "取消置顶失败，请稍后重试"))
+            }
         }
     }
     
@@ -1323,9 +1416,12 @@ struct PostDetailView: View {
             }
             await MainActor.run {
                 isCollected.toggle()
+                ToastManager.shared.success(isCollected ? "已收藏" : "已取消收藏")
             }
         } catch {
-            print("Failed to toggle collect: \(error)")
+            await MainActor.run {
+                ToastManager.shared.error((error as? APIError)?.userMessage ?? "操作失败，请稍后重试")
+            }
         }
     }
     
@@ -1333,11 +1429,27 @@ struct PostDetailView: View {
         do {
             _ = try await APIService.shared.blackUser(userId: userId)
             await MainActor.run {
-                // 显示提示
-                print("已拉黑用户: \(userId)")
+                isAuthorBlacked = true
+                ToastManager.shared.success("已拉黑")
             }
         } catch {
-            print("Failed to black user: \(error)")
+            await MainActor.run {
+                ToastManager.shared.error((error as? APIError)?.userMessage ?? "拉黑失败，请稍后重试")
+            }
+        }
+    }
+    
+    private func unblackUser(_ userId: String) async {
+        do {
+            _ = try await APIService.shared.unblackUser(userId: userId)
+            await MainActor.run {
+                isAuthorBlacked = false
+                ToastManager.shared.success("已取消拉黑")
+            }
+        } catch {
+            await MainActor.run {
+                ToastManager.shared.error((error as? APIError)?.userMessage ?? "取消拉黑失败，请稍后重试")
+            }
         }
     }
     
@@ -1359,17 +1471,16 @@ struct PostDetailView: View {
             do {
                 _ = try await APIService.shared.deleteDyn(id: post.id)
                 await MainActor.run {
+                    showActionSheet = false
+                    ToastManager.shared.success("已删除")
                     dismiss()
                 }
             } catch {
-                print("Failed to delete post: \(error)")
+                await MainActor.run {
+                    ToastManager.shared.error((error as? APIError)?.userMessage ?? "删除失败，请稍后重试")
+                }
             }
         }
-    }
-    
-    private func reportPost(_ post: Post) {
-        // 举报接口待后端提供后对接
-        // 暂时仅做占位，可后续接入 appReportDyn 或 setMessage type=10
     }
     
     private func performRepost() async {

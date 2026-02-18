@@ -20,8 +20,17 @@ const {
 } = require('./redis');
 
 
-// 云函数入口函数
+// 云函数入口函数（支持 event.envId，与 appApi 列表/详情同库，避免删除时「帖子不存在」）
 exports.main = async (event, context) => {
+  // 与 getDynDetailV201 一致：按 envId 选库，保证与详情页同环境
+  const envId = event.envId || process.env.TCB_ENV_ID;
+  if (envId) {
+    cloud.init({ env: envId });
+  }
+  const dbForRequest = cloud.database();
+  const _req = dbForRequest.command;
+  const $req = dbForRequest.command.aggregate;
+
   const wxContext = cloud.getWXContext()
   const ownOpenId = event.source === 'newApp' ? event.openId : wxContext.OPENID;
 
@@ -40,8 +49,8 @@ exports.main = async (event, context) => {
     // 删除评论
     return await deleteCommentHandler(event);
   } else {
-    // 删除动态
-    return await deleteDynamic(event, ownOpenId);
+    // 删除动态（传入按 envId 选库后的 db，避免「帖子不存在」）
+    return await deleteDynamic(event, ownOpenId, dbForRequest, _req, $req);
   }
 }
 
@@ -61,8 +70,8 @@ async function deleteCommentHandler(event) {
   }
 }
 
-// 删除动态的函数
-async function deleteDynamic(event, ownOpenId) {
+// 删除动态的函数（传入 db/_/$ 以使用 main 中按 envId 初始化后的库）
+async function deleteDynamic(event, ownOpenId, db, _, $) {
   try {
     const {
       id

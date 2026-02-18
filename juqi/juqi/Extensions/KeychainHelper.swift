@@ -12,6 +12,7 @@ import Security
 class KeychainHelper {
     private static let service = "com.juqi.app"
     private static let tokenKey = "userToken"
+    private static let openIdKey = "userOpenId"
     
     /// 保存Token到Keychain
     static func saveToken(_ token: String) -> Bool {
@@ -62,7 +63,48 @@ class KeychainHelper {
             kSecAttrService as String: service,
             kSecAttrAccount as String: tokenKey
         ]
-        
+        SecItemDelete(query as CFDictionary)
+        deleteOpenId()
+    }
+    
+    /// 保存当前用户 openId（登录时写入，用于关注列表等接口）
+    static func saveOpenId(_ openId: String) -> Bool {
+        guard let data = openId.data(using: .utf8) else { return false }
+        deleteOpenId()
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: openIdKey,
+            kSecValueData as String: data
+        ]
+        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+    }
+    
+    /// 读取当前用户 openId
+    static func getOpenId() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: openIdKey,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let openId = String(data: data, encoding: .utf8), !openId.isEmpty else {
+            return nil
+        }
+        return openId
+    }
+    
+    /// 删除 openId（登出时调用）
+    static func deleteOpenId() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: openIdKey
+        ]
         SecItemDelete(query as CFDictionary)
     }
     

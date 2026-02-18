@@ -41,9 +41,10 @@ exports.main = async (event, context) => {
     return result;
 
   } catch (error) {
+    console.error('[updateUserInfoV201]', error);
     return {
       code: 400,
-      error
+      message: error.message || '更新失败'
     }
   }
 }

@@ -102,7 +102,10 @@ async function GetMessageList(event) {
     const { openId, data, db, dataEnv } = event;
     const { page = 1, limit = 20, type, from, aitType, skipNotReadCount } = data || {};
 
-    console.log(`[reqId=${reqId}][appGetMessageList] 入参: dataEnv=${dataEnv || 'test'}, page=${page}, limit=${limit}, type=${type !== undefined ? type : 'nil'}`);
+    console.log(`[reqId=${reqId}][appGetMessageList] 入参: openId(尾4)=${maskOpenId(openId)}, openId空=${!openId || openId === ''}, dataEnv=${dataEnv || 'test'}, page=${page}, limit=${limit}, type=${type !== undefined ? type : 'nil'}`);
+    if (!openId || openId === '') {
+      console.warn(`[reqId=${reqId}][appGetMessageList] openId 为空，首屏将返回空列表或仅 chat 会话`);
+    }
 
     // 参数标准化（含 dataEnv：测试环境函数读线上数据时传 dataEnv=prod）
     const coreParams = {

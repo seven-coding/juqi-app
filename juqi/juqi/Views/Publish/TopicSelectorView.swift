@@ -12,8 +12,8 @@ struct TopicSelectorView: View {
     @State private var topicList: [Topic] = []
     @State private var isLoading = false
     @State private var isSearching = false
-    
-    let recommendedTopics = ["我的年末存档", "你好2025", "日常", "橘友集结"]
+    @State private var isCreatingTopic = false
+    @State private var createTopicError: String?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -65,6 +65,36 @@ struct TopicSelectorView: View {
                     }
                     .padding(.horizontal, 20)
                 }
+            } else if isSearching && topicList.isEmpty && !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                // 搜索无结果：提供创建话题
+                VStack(alignment: .leading, spacing: 12) {
+                    if let err = createTopicError {
+                        Text(err)
+                            .font(.system(size: 12))
+                            .foregroundColor(.red.opacity(0.9))
+                            .padding(.horizontal, 24)
+                    }
+                    Button(action: { Task { await createTopicAndSelect() } }) {
+                        HStack(spacing: 8) {
+                            if isCreatingTopic {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(Color(hex: "#FF6B35"))
+                            }
+                            Text("创建话题「#\(searchText.trimmingCharacters(in: .whitespaces))#」")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(12)
+                    }
+                    .disabled(isCreatingTopic)
+                    .padding(.horizontal, 20)
+                }
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("推荐话题")
@@ -72,15 +102,23 @@ struct TopicSelectorView: View {
                         .foregroundColor(.white.opacity(0.4))
                         .padding(.horizontal, 24)
                     
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(recommendedTopics, id: \.self) { topic in
-                                topicChip(topic, isSelected: selectedTopics.contains(topic)) {
-                                    toggleTopic(topic)
+                    if topicList.isEmpty && !isLoading {
+                        Text("暂无推荐话题，可搜索或直接输入创建")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.35))
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 8)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(topicList) { topic in
+                                    topicChip(topic.name, isSelected: selectedTopics.contains(topic.name)) {
+                                        toggleTopic(topic.name)
+                                    }
                                 }
                             }
+                            .padding(.horizontal, 20)
                         }
-                        .padding(.horizontal, 20)
                     }
                 }
             }
@@ -153,12 +191,35 @@ struct TopicSelectorView: View {
     private func searchTopics() async {
         isSearching = true
         isLoading = true
+        createTopicError = nil
         do {
             topicList = try await APIService.shared.searchTopic(keyword: searchText)
         } catch {
             print(error)
         }
         isLoading = false
+    }
+
+    /// 创建当前搜索词为话题并选中
+    private func createTopicAndSelect() async {
+        let name = searchText.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        isCreatingTopic = true
+        createTopicError = nil
+        defer { isCreatingTopic = false }
+        do {
+            let created = try await APIService.shared.createTopic(name: name)
+            await MainActor.run {
+                toggleTopic(created.name)
+                topicList = [created]
+                searchText = ""
+                isSearching = false
+            }
+        } catch {
+            await MainActor.run {
+                createTopicError = (error as? APIError)?.localizedDescription ?? "创建失败，请重试"
+            }
+        }
     }
     
     private func removeTopic(_ topic: String) {

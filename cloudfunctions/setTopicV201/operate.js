@@ -98,18 +98,20 @@ async function addTopic(data) {
       return errorCode.HAS_TOPIC
     }
 
-    let authResult = await cloud.openapi.security.msgSecCheck({
-      content: topic
-    });
-
-    if (authResult.errCode !== 0) {
-      return {
-        code: 400,
-        message: "抱歉，微信审核当前话题文字部分有敏感内容，无法发布	"
+    // 微信内容安全校验：不支持时（如非微信环境）跳过，仅记录日志
+    try {
+      const authResult = await cloud.openapi.security.msgSecCheck({
+        content: topic
+      });
+      if (authResult.errCode !== 0) {
+        return {
+          code: 400,
+          message: "抱歉，微信审核当前话题文字部分有敏感内容，无法发布"
+        };
       }
+    } catch (secErr) {
+      console.warn('[addTopic] msgSecCheck 不可用或失败，跳过校验:', secErr?.errCode || secErr?.message || secErr);
     }
-
-
 
     let result = await db.collection('topics').add({
       data: {
@@ -122,7 +124,8 @@ async function addTopic(data) {
 
     if (result.errMsg == "collection.add:ok") {
       return {
-        code: 200
+        code: 200,
+        data: { _id: result._id, topic }
       }
     }
 

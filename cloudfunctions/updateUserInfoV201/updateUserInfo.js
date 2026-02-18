@@ -12,6 +12,7 @@ const {
   setRedisValue,
   setRedisExpire
 } = require('./redis');
+const { errorCode } = require('./errorCode');
 
 async function getTempList(imageIds) {
   let res = await new Promise((resolve, reject) => {
@@ -75,23 +76,34 @@ async function updateUserInfo(event, openId) {
   }).get()).data[0];
 
   let avatarVisitUrl;
-  if (avatarUrl && avatarUrl.length && avatarUrl[0].includes('cloud')) {
-    avatarVisitUrl = (await getTempList([avatarUrl]))[0]
+  const avatarUrlStr = typeof avatarUrl === 'string' ? avatarUrl : (avatarUrl && avatarUrl[0]);
+  const avatarUrlList = typeof avatarUrl === 'string' ? [avatarUrl] : (Array.isArray(avatarUrl) ? avatarUrl : []);
+  if (avatarUrlStr && avatarUrlStr.includes && avatarUrlStr.includes('cloud')) {
+    avatarVisitUrl = (await getTempList(avatarUrlList))[0];
     if (avatarVisitUrl) {
       event.avatarVisitUrl = avatarVisitUrl;
     } else {
-      event.avatarVisitUrl = avatarUrl;
+      event.avatarVisitUrl = avatarUrlStr;
     }
   }
 
-  // 如果包括头像地址，同时更新图片地址的缓存地址
+  // 只写入允许的用户字段，避免 openId/requestId 等导致数据库报错
+  const allowedKeys = [
+    'nickName', 'avatar', 'avatarUrl', 'avatarVisitUrl', 'birthDay', 'city',
+    'signature', 'gender', 'constellation', 'mbti', 'relationshipStatus',
+    'school', 'imgList', 'labels', 'mobile'
+  ];
+  const data = {};
+  for (const key of allowedKeys) {
+    if (event[key] !== undefined) {
+      data[key] = event[key];
+    }
+  }
+  if (Object.keys(data).length === 0) {
+    return { code: 200 };
+  }
 
-  let updateResult = await db.collection('user').where({
-      openId
-    })
-    .update({
-      data: event,
-    });
+  await db.collection('user').where({ openId }).update({ data });
 
   await setRedisExpire(openId, 0);
 
@@ -99,7 +111,7 @@ async function updateUserInfo(event, openId) {
     data: {
       openId: openId,
       oldUserInfo,
-      newUserInfo: event,
+      newUserInfo: data,
       createTime: new Date().getTime(),
     }
   })

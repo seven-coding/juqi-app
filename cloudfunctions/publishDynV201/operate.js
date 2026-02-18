@@ -75,7 +75,7 @@ async function publicDyn(data, circleInfo, verify) {
     }];
     data.authorizationStatus = 0
 
-    // 发布验证帖子，默认帖子dynStatus: 2
+    // dynStatus 与小程序统一：1=全部可见，2=仅圈子内可见（树洞）。见 getDynsListV201/dynStatus.js
     if (!data.dynStatus) {
         data.dynStatus = circleDynStatus ? circleDynStatus : 1
     }

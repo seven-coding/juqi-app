@@ -351,4 +351,5 @@ module.exports = {
   SearchTopic,
   SearchCircle,
   SearchAll,
+  mapTopicForClient,
 };

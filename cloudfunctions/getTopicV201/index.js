@@ -35,8 +35,7 @@ exports.main = async (event, context) => {
         data: topics
       }
     } else if (type === 2) {
-      let result = getRecomTopic();
-      return result;
+      return await getRecomTopic();
       
     } else if (type === 3) {
       console.log(topic);

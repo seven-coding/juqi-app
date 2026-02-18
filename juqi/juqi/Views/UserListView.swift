@@ -129,7 +129,6 @@ struct UserListView: View {
         } catch {
             print("Failed to load users: \(error)")
         }
-        applyMockUsersIfNeeded()
         isLoading = false
     }
     
@@ -160,25 +159,6 @@ struct UserListView: View {
         // 搜索功能：在本地已加载的用户中过滤
         // 如果需要服务端搜索，可以调用 searchUser API
         isSearching = false
-    }
-    
-    private func applyMockUsersIfNeeded() {
-#if DEBUG
-        guard users.isEmpty else { return }
-        users = Self.mockUsers(for: type)
-        hasMore = false
-#endif
-    }
-    
-    private static func mockUsers(for type: ListType) -> [User] {
-        let suffix = type == .follow ? "关注" : type == .follower ? "粉丝" : "用户"
-        return [
-            User(id: "mock_user_001", userName: "橘子汽水", avatar: nil, signature: "今天也要努力发光", isVip: true),
-            User(id: "mock_user_002", userName: "夜航星", avatar: nil, signature: "在微光里慢慢靠近", isVip: false),
-            User(id: "mock_user_003", userName: "海盐拿铁", avatar: nil, signature: "日常分享 · \(suffix)", isVip: false),
-            User(id: "mock_user_004", userName: "清风牧场", avatar: nil, signature: "记录生活碎片", isVip: true),
-            User(id: "mock_user_005", userName: "松露曲奇", avatar: nil, signature: "你好呀，\(suffix) 列表", isVip: false)
-        ]
     }
 }
 

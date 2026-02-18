@@ -30,12 +30,13 @@ const {
 } = require('./formatDate.js');
 
 
-// 获取广场列表动态
+// 获取广场列表动态（首页「最新」）
+// dynStatus：仅展示 1=全部可见、6=仅圈子不可见；排除 2=仅圈子/树洞可见，树洞帖仅在电站页展示
 async function getSquareList(event, ownOpenId) {
   // 在函数内部获取 db 实例，确保使用正确的环境
   const db = cloud.database()
   const _ = db.command
-  const VISIBLE_DYN_STATUS = _.in([1, 6]);
+  const VISIBLE_DYN_STATUS = _.in([1, 6]); // 排除 2，树洞不展示在首页
   
   // 获取环境标识，用于区分缓存
   const envId = event.envId || 'test-juqi-3g1m5qa7cc2737a1';
@@ -63,6 +64,8 @@ async function getSquareList(event, ownOpenId) {
   if (redisDyns ) {
     console.log('命中缓存');
     redisDyns = JSON.parse(redisDyns);
+    // 树洞帖(dynStatus=2)仅电站展示，首页不展示
+    redisDyns.dynList = (redisDyns.dynList || []).filter(d => d.dynStatus !== 2);
 
     ownOpenId && (redisDyns.dynList = await dealBlackDyn(ownOpenId, redisDyns.dynList))
     ownOpenId && (redisDyns.dynList = await dealFollowDyn(ownOpenId, redisDyns.dynList))
@@ -90,7 +93,7 @@ async function getSquareList(event, ownOpenId) {
     console.log('[getSquareList v2.4.0] 使用简单查询模式');
     
     try {
-      // 构建查询条件（排除管理员/电站屏蔽、用户删除）
+      // 构建查询条件：仅 1/6 展示在首页，排除 2（仅圈子/树洞可见）
       let whereQuery = {
         dynStatus: _.in([1, 6]),
         hiddenStatus: _.neq(1),
@@ -192,6 +195,9 @@ async function getSquareList(event, ownOpenId) {
       result = await dealData(query, sort, limit, ownOpenId);
     }
     // === 临时方案结束 ===
+
+    // 树洞帖(dynStatus=2)仅电站展示，首页不展示
+    result.list = (result.list || []).filter(d => d.dynStatus !== 2);
 
     await setRedisValue(redisValue, JSON.stringify({
       code: 200,

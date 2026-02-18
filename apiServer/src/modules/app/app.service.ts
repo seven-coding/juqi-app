@@ -13,7 +13,9 @@ export const DIRECT_DB_OPERATIONS: readonly string[] = [
   'appGetCurrentUserProfile',
   'appGetDynList',
   'appGetDynDetail',
+  'appGetUserDynList',
   'appChargeDyn',
+  'appUnchargeDyn',
   'appGetUnreadCount',
   'appGetMessageList',
   'appGetChatList',
@@ -32,8 +34,12 @@ export interface MigrationConfig {
   appGetDynList: boolean;
   /** 获取动态详情（与列表同源，避免列表直连时详情走云函数导致 404） */
   appGetDynDetail: boolean;
+  /** 获取用户个人主页动态列表 */
+  appGetUserDynList: boolean;
   /** 充电动态（与列表同源，避免列表直连时充电走云函数导致 document does not exist） */
   appChargeDyn: boolean;
+  /** 取消充电动态 */
+  appUnchargeDyn: boolean;
   /** 获取未读消息数 */
   appGetUnreadCount: boolean;
   /** 获取消息列表 */
@@ -73,7 +79,7 @@ export class AppService {
     private readonly messageService: MessageService,
   ) {
     this.useCloudFunctionFallback = this.configService.get('USE_CLOUD_FUNCTION_FALLBACK') === 'true';
-    console.log('[AppService] 直连清单: DIRECT_DB_OPERATIONS（固定 7 个），不按 MIGRATION_* 切换');
+    console.log('[AppService] 直连清单: DIRECT_DB_OPERATIONS，不按 MIGRATION_* 切换');
     console.log('[AppService] 回滚开关:', this.useCloudFunctionFallback);
   }
 
@@ -101,7 +107,9 @@ export class AppService {
       appGetCurrentUserProfile: useDirect && DIRECT_DB_OPERATIONS.includes('appGetCurrentUserProfile'),
       appGetDynList: useDirect && DIRECT_DB_OPERATIONS.includes('appGetDynList'),
       appGetDynDetail: useDirect && DIRECT_DB_OPERATIONS.includes('appGetDynDetail'),
+      appGetUserDynList: useDirect && DIRECT_DB_OPERATIONS.includes('appGetUserDynList'),
       appChargeDyn: useDirect && DIRECT_DB_OPERATIONS.includes('appChargeDyn'),
+      appUnchargeDyn: useDirect && DIRECT_DB_OPERATIONS.includes('appUnchargeDyn'),
       appGetUnreadCount: useDirect && DIRECT_DB_OPERATIONS.includes('appGetUnreadCount'),
       appGetMessageList: useDirect && DIRECT_DB_OPERATIONS.includes('appGetMessageList'),
       appGetChatList: useDirect && DIRECT_DB_OPERATIONS.includes('appGetChatList'),
@@ -155,8 +163,12 @@ export class AppService {
         return result;
       } catch (error) {
         const duration = Date.now() - startTime;
-        console.error(`[AppService] 直连失败，回退到云函数 - operation: ${operation}, error: ${error.message}, duration: ${duration}ms`);
-        // 直连失败时自动回退到云函数
+        console.error(`[AppService] 直连失败 - operation: ${operation}, error: ${(error as Error).message}, duration: ${duration}ms`);
+        // appGetUserDynList 不回退云函数（云函数同样易超时），直接返回空列表保证个人主页可打开
+        if (operation === 'appGetUserDynList') {
+          console.log('[AppService] appGetUserDynList 直连失败，返回空列表（不回退云函数）');
+          return { code: 200, message: 'success', data: { list: [], hasMore: false, publicTime: undefined } };
+        }
         return this.callAppApiCloudFunction(operation, data, token, dataEnv);
       }
     }
@@ -187,8 +199,14 @@ export class AppService {
       case 'appGetDynDetail':
         return this.handleGetDynDetail(data, openId, dataEnv);
 
+      case 'appGetUserDynList':
+        return this.handleGetUserDynList(data, openId, dataEnv);
+
       case 'appChargeDyn':
         return this.handleChargeDyn(data, openId, dataEnv);
+
+      case 'appUnchargeDyn':
+        return this.handleUnchargeDyn(data, openId, dataEnv);
 
       case 'appGetUnreadCount':
         return this.handleGetUnreadCount(openId, dataEnv);
@@ -235,21 +253,23 @@ export class AppService {
     openId: string | null,
     dataEnv: string,
   ): Promise<any> {
-    const { type: rawType = 2, pageSize: dataPageSize, offset = 0, limit, publicTime } = data || {};
-    // 与 appApiV201 一致：客户端传字符串 all/follow/hot，映射为数字 2/6/10
+    const { type: rawType = 2, pageSize: dataPageSize, offset = 0, limit, publicTime, circleId } = data || {};
+    // 与 appApiV201 一致：客户端传字符串 all/follow/hot/circle，映射为数字 2/6/10/1
     const typeMap: Record<string, number> = {
       all: 2,    // 最新
       follow: 6, // 关注
       hot: 10,   // 热榜
+      circle: 1, // 电站动态
     };
     const type = typeof rawType === 'string' ? (typeMap[rawType] ?? 2) : Number(rawType);
     const pageSize = limit ?? dataPageSize ?? 20;
     console.log(
-      `[AppService] handleGetDynList 直连 - dataEnv: ${dataEnv}, type: ${type}(raw: ${rawType}), pageSize: ${pageSize}, offset: ${offset}, publicTime: ${publicTime ?? 'nil'}`,
+      `[AppService] handleGetDynList 直连 - dataEnv: ${dataEnv}, type: ${type}(raw: ${rawType}), circleId: ${circleId ?? '-'}, pageSize: ${pageSize}, offset: ${offset}, publicTime: ${publicTime ?? 'nil'}`,
     );
 
     const result = await this.dynService.getDynList({
       type,
+      circleId: circleId ?? undefined,
       pageSize,
       offset,
       dataEnv,
@@ -257,6 +277,42 @@ export class AppService {
       publicTime: publicTime ?? undefined,
     });
 
+    return { code: 200, message: 'success', data: result };
+  }
+
+  /**
+   * 处理获取用户个人主页动态列表（直连，与 getDynsListV201 type=4 语义一致）
+   */
+  private async handleGetUserDynList(
+    data: any,
+    openId: string | null,
+    dataEnv: string,
+  ): Promise<any> {
+    if (!openId) {
+      return { code: 401, message: '未登录' };
+    }
+    const userId = data?.userId;
+    if (!userId) {
+      return { code: 400, message: '缺少用户ID' };
+    }
+    const limit = Math.min(Math.max(1, Number(data?.limit) || 20), 100);
+    const publicTime = data?.publicTime != null ? Number(data.publicTime) : undefined;
+    const pair = await this.userService.getOpenIdAndIdForUser(userId, dataEnv);
+    const targetOpenId = pair ? pair.openId : (userId as string);
+    const targetOpenIds = pair
+      ? [...new Set([pair.openId, pair._id].filter(Boolean))]
+      : [userId];
+    console.log(
+      `[AppService] handleGetUserDynList 直连 - dataEnv: ${dataEnv}, userId: ${userId}, targetOpenId(尾4): ${AppService.maskOpenId(targetOpenId)}, targetOpenIds: [${targetOpenIds.map(AppService.maskOpenId).join(',')}], limit: ${limit}, publicTime: ${publicTime ?? 'nil'}`,
+    );
+    const result = await this.dynService.getUserDynList({
+      targetOpenId,
+      targetOpenIds,
+      viewerOpenId: openId,
+      limit,
+      publicTime,
+      dataEnv,
+    });
     return { code: 200, message: 'success', data: result };
   }
 
@@ -303,6 +359,25 @@ export class AppService {
     }
     console.log(`[AppService] handleChargeDyn 直连 - id: ${id}, dataEnv: ${dataEnv}`);
     return this.dynService.chargeDyn({ dynId: id, openId, dataEnv });
+  }
+
+  /**
+   * 处理取消充电动态（直连）
+   */
+  private async handleUnchargeDyn(
+    data: any,
+    openId: string | null,
+    dataEnv: string,
+  ): Promise<any> {
+    const id = data?.id;
+    if (!id) {
+      return { code: 400, message: '缺少动态ID', data: null };
+    }
+    if (!openId) {
+      return { code: 401, message: '未登录', data: null };
+    }
+    console.log(`[AppService] handleUnchargeDyn 直连 - id: ${id}, dataEnv: ${dataEnv}`);
+    return this.dynService.unchargeDyn({ dynId: id, openId, dataEnv });
   }
 
   /**

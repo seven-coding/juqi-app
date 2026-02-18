@@ -58,21 +58,26 @@ async function sendSecretDyns(event, openId, circleInfo) {
 
     let imageList, imageLists;
     // try {
-    // 动态内容校验
+    // 动态内容校验（与其它电站一致，均需过微信审核）
     dynContent && (dynContent = dynContent.trim());
     if (dynContent && dynContent.length) {
         try {
-            // 避免前后多余空格
             let result = await cloud.openapi.security.msgSecCheck({
                 content: dynContent
             });
-            console.log(result)
-            if (result.errCode !== 0) {
+            // 云调用成功返回 errCode 0 表示内容正常；内容有风险时微信会抛异常 errCode 87014
+            if (result.errCode !== 0 && result.errCode !== undefined) {
+                console.log('[sendSecretDyns] msgSecCheck 返回非0:', result);
                 return errorCode.NO_AUTH_CONTENT;
             }
         } catch (error) {
-            console.log(error)
-            return errorCode.NO_AUTH_CONTENT;
+            // 仅 87014 为内容风险并拦截；其它错误（网络/权限/超时等）仅打日志，默认通过，不阻碍发布
+            const code = error.errCode ?? error.errcode;
+            console.log('[sendSecretDyns] msgSecCheck 异常:', code, error.errMsg || error.errmsg || error.message);
+            if (code === 87014) {
+                return errorCode.NO_AUTH_CONTENT;
+            }
+            // 非内容违规：放行，继续发布
         }
     }
 
@@ -119,7 +124,7 @@ async function sendSecretDyns(event, openId, circleInfo) {
         musicSrc,
         isAudioShow,
         publicTime: new Date().valueOf(),
-        dynStatus: 2,
+        dynStatus: 2, // 树洞/私密电站：仅圈子内可见，与小程序 sendSecretDyns 一致
         topic,
         ait,
         dynType, //dynType: 为2时表示转发类型
@@ -161,7 +166,8 @@ async function sendSecretDyns(event, openId, circleInfo) {
         return {
             code: 201,
             message: '投稿电站，审核通过后出现',
-            dynId: result._id
+            dynId: result._id,
+            dynStatus: 2
         };
     } else {
         return {

@@ -98,6 +98,14 @@ class APIService {
         )
     }
     
+    /// 取消充电
+    func unchargeDyn(id: String) async throws -> EmptyResponse {
+        return try await NetworkService.shared.request(
+            operation: "appUnchargeDyn",
+            data: ["id": id]
+        )
+    }
+    
     /// 收藏动态
     func favoriteDyn(id: String) async throws -> EmptyResponse {
         return try await NetworkService.shared.request(
@@ -122,6 +130,24 @@ class APIService {
         )
     }
     
+    /// 举报动态
+    /// - Parameters:
+    ///   - id: 动态 ID
+    ///   - circleId: 圈子 ID（可选）
+    ///   - tipsReason: 举报原因（必填）
+    ///   - tipsDesc: 补充说明（选填，空则传空格）
+    ///   - tipsImageIds: 举报截图 ID/URL 列表（选填）
+    func reportDyn(id: String, circleId: String?, tipsReason: String, tipsDesc: String?, tipsImageIds: [String]?) async throws -> EmptyResponse {
+        var data: [String: Any] = ["id": id, "tipsReason": tipsReason]
+        if let cid = circleId, !cid.isEmpty { data["circleId"] = cid }
+        data["tipsDesc"] = (tipsDesc != nil && !tipsDesc!.isEmpty) ? tipsDesc! : " "
+        data["tipsImageIds"] = tipsImageIds ?? []
+        return try await NetworkService.shared.request(
+            operation: "appReportDyn",
+            data: data
+        )
+    }
+    
     /// 个人主页置顶/取消置顶（本人动态）
     /// - Parameters:
     ///   - postId: 动态 ID
@@ -133,9 +159,10 @@ class APIService {
         ) as EmptyResponse
     }
     
-    /// 获取话题列表
+    /// 获取话题列表（服务端返回 data.list；无 list 时按 data 为数组兼容）
     func getTopicList() async throws -> [Topic] {
-        return try await NetworkService.shared.request(operation: "appGetTopicList")
+        let response: TopicListResponse = try await NetworkService.shared.request(operation: "appGetTopicList")
+        return response.list
     }
     
     /// 发布动态
@@ -147,6 +174,7 @@ class APIService {
     ///   - topic: 话题列表
     ///   - ait: @用户列表
     ///   - music: 音乐信息
+    ///   - isSecret: 是否树洞/匿名电站（发到此电站的帖仅电站内可见、不出首页）
     func publishDyn(
         content: String,
         circleId: String,
@@ -154,13 +182,15 @@ class APIService {
         imageIds: [String] = [],
         topic: [String]? = nil,
         ait: [AitUser]? = nil,
-        music: MusicInfo? = nil
+        music: MusicInfo? = nil,
+        isSecret: Bool = false
     ) async throws -> PublishResponse {
         var data: [String: Any] = [
             "dynContent": content,
             "circleId": circleId,
             "circleTitle": circleTitle,
-            "imageIds": imageIds
+            "imageIds": imageIds,
+            "isSecret": isSecret
         ]
         
         if let topic = topic {
@@ -977,11 +1007,33 @@ struct DynListResponse: Codable {
     /// 游标，加载下一页时传入（服务端为游标分页，不用 page）
     let publicTime: Double?
 
+    enum CodingKeys: String, CodingKey {
+        case list
+        case total
+        case hasMore
+        case publicTime
+    }
+
     init(list: [Post], total: Int? = nil, hasMore: Bool, publicTime: Double? = nil) {
         self.list = list
         self.total = total
         self.hasMore = hasMore
         self.publicTime = publicTime
+    }
+
+    /// 容错解码：缺 list/hasMore 时使用默认值，避免 appGetUserDynList 超时或返回异常导致崩溃
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedList: [Post]? = try? c.decodeIfPresent([Post].self, forKey: .list)
+        list = decodedList ?? []
+        #if DEBUG
+        if list.isEmpty && decodedList == nil {
+            print("📋 [DynListResponse] 解码 list 失败或缺失，使用默认空列表（可能为服务端结构异常或 Post 字段不匹配）")
+        }
+        #endif
+        total = try? c.decodeIfPresent(Int.self, forKey: .total)
+        hasMore = (try? c.decodeIfPresent(Bool.self, forKey: .hasMore)) ?? false
+        publicTime = try? c.decodeIfPresent(Double.self, forKey: .publicTime)
     }
 }
 
@@ -1021,6 +1073,11 @@ struct Topic: Identifiable, Codable {
     let id: String
     let name: String
     let icon: String?
+}
+
+/// 话题列表接口返回（appGetTopicList 返回 data.list）
+struct TopicListResponse: Codable {
+    let list: [Topic]
 }
 
 struct ImageUploadResponse: Codable {

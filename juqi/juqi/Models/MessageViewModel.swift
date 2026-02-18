@@ -16,12 +16,12 @@ class MessageViewModel: ObservableObject {
     @Published var allLoaded = false
     @Published var isEmpty = true  // 初始为 true，避免首屏闪出空列表再变空状态
     
+    /// 消息页顶部入口：仅保留 4 个（充电/评论/艾特/访客），申请入口改至设置或其它二级
     @Published var navItems: [MessageNavItem] = [
         MessageNavItem(id: 0, title: "充电", icon: "bolt.fill", count: 0, url: nil),
         MessageNavItem(id: 1, title: "评论", icon: "bubble.left.and.bubble.right", count: 0, url: nil),
         MessageNavItem(id: 2, title: "艾特", icon: "at", count: 0, url: nil),
-        MessageNavItem(id: 3, title: "访客", icon: "person.fill", count: 0, url: nil),
-        MessageNavItem(id: 4, title: "申请", icon: "envelope.fill", count: 0, url: nil)
+        MessageNavItem(id: 3, title: "访客", icon: "person.fill", count: 0, url: nil)
     ]
     
     private var page = 1

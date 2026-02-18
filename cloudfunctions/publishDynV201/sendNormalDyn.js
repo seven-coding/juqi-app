@@ -181,7 +181,8 @@ async function sendNormalDyn(event, openId, circleInfo) {
                 return {
                     code: 201,
                     message: '投稿电站，审核通过后出现',
-                    dynId: result._id
+                    dynId: result._id,
+                    dynStatus: 1
                 };
             } else {
                 return {
@@ -259,7 +260,8 @@ async function sendNormalDyn(event, openId, circleInfo) {
             return {
                 code: 200,
                 message: '发布成功',
-                // dynId: result._id
+                dynId: result._id,
+                dynStatus: 1
             }
         }
     }
@@ -269,27 +271,25 @@ async function sendNormalDyn(event, openId, circleInfo) {
 
 exports.sendNormalDyn = sendNormalDyn;
 
-// 新增的文字校验函数
+// 新增的文字校验函数（与 sendSecretDyns 一致：仅 87014 视为敏感内容，其它异常视为服务不可用）
 async function contentCheck(dynContent) {
-
-console.log(7)
-  dynContent && (dynContent = dynContent.trim());
-    let result;
+    dynContent && (dynContent = dynContent.trim());
     if (dynContent && dynContent.length) {
         try {
-            // 避免前后多余空格
-console.log(8)
-            result = await cloud.openapi.security.msgSecCheck({
-                content: dynContent
-            });
+            let result = await cloud.openapi.security.msgSecCheck({ content: dynContent });
+            if (result.errCode !== 0 && result.errCode !== undefined) {
+                console.log('[contentCheck] msgSecCheck 返回非0:', result);
+                throw errorCode.NO_AUTH_CONTENT;
+            }
         } catch (error) {
-            console.log(error);
-            throw new Error(error === 'NO_AUTH_CONTENT' ? 'NO_AUTH_CONTENT' : errorCode.NO_AUTH);
+            const code = error.errCode ?? error.errcode;
+            console.log('[contentCheck] msgSecCheck 异常:', code, error.errMsg || error.errmsg || error.message);
+            if (code === 87014) throw errorCode.NO_AUTH_CONTENT;
+            // 非内容违规：放行，不阻碍发布
         }
     }
-    // 文字过多校验
     if (dynContent.length > 3000) {
-        throw new Error(errorCode.OVER_LENGTH);
+        throw errorCode.OVER_LENGTH;
     }
 }
 

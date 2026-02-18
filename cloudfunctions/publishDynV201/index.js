@@ -56,12 +56,19 @@ exports.main = async (event, context) => {
   //发布数量缓存失效
   await invalidateDynamicsCache(circleId, openId);
 
+  // 树洞/私密电站：getCircle 未命中时用客户端传的 isSecret，确保写 dynStatus=2，仅电站展示
+  const isSecretCircle = circleInfo && (circleInfo.isSecret === true || circleInfo.isSecret === 1)
+    || (event.isSecret === true || event.isSecret === 1);
+  if (isSecretCircle && !circleInfo) {
+    circleInfo = { isSecret: true, circleDynStatus: 2, title: event.circleTitle || '', desc: '' };
+  }
+
   console.log(123123)
   if (type == 2 || type == 3) {
     // 发布待验证帖子
     return await sendVerifyDyns(event, openId, circleInfo);
-  } else if (circleInfo.isSecret) {
-    // 发布私密圈子
+  } else if (isSecretCircle) {
+    // 发布私密圈子（树洞）：写 dynStatus=2，仅电站页展示
     return await sendSecretDyns(event, openId, circleInfo);
   } else if (joinStatus == 1) {
     return await sendNormalDyn(event, openId, circleInfo);
@@ -76,4 +83,7 @@ async function invalidateDynamicsCache(circleId, openId) {
   const circleCacheKey = `NEW_DYN_${(circleId || '').slice(0, 8)}`;
   await delKey(circleCacheKey);
   await delKey(`SQUARE_DYN_Square_LIST`);
+  // getSquareList 使用带 env 前缀的 key，一并失效避免首页展示旧数据
+  await delKey(`TEST_SQUARE_DYN_Square_LIST`);
+  await delKey(`PROD_SQUARE_DYN_Square_LIST`);
 }

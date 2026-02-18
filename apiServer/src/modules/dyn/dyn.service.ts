@@ -5,12 +5,15 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { CloudbaseService } from '../cloudbase/cloudbase.service';
+import { UserService } from '../user/user.service';
 import { transformDynItem, transformUserProfile, toInt, toBool } from '../../utils/data-transformer';
 
-/** 动态列表查询参数（type 与 getDynsListV201 一致：2=最新, 6=关注, 10=热榜） */
+/** 动态列表查询参数（type 与 getDynsListV201 一致：1=电站, 2=最新, 6=关注, 10=热榜） */
 export interface GetDynListParams {
-  /** 查询类型：2=最新, 6=关注, 10=热榜 */
+  /** 查询类型：1=电站, 2=最新, 6=关注, 10=热榜 */
   type?: number;
+  /** 电站 ID（type=1 时必传） */
+  circleId?: string;
   /** 分页大小 */
   pageSize?: number;
   /** 分页偏移 */
@@ -43,11 +46,28 @@ export interface ChargeDynParams {
   dataEnv?: string;
 }
 
+/** 用户个人主页动态列表参数（与 getDynsListV201 type=4 一致） */
+export interface GetUserDynListParams {
+  /** 被查看用户的 openId（用于 isOwn 判断） */
+  targetOpenId: string;
+  /** 查询 dyn 时使用的 openId 列表，兼容 dyn.openId 存 openId 或 user._id；为空则仅用 targetOpenId */
+  targetOpenIds?: string[];
+  /** 当前登录用户 openId（用于 isOwn、点赞/收藏状态） */
+  viewerOpenId: string;
+  /** 每页条数 */
+  limit?: number;
+  /** 游标：上一页最后一条的 publicTime */
+  publicTime?: number;
+  /** 数据环境 */
+  dataEnv?: string;
+}
+
 @Injectable()
 export class DynService {
   constructor(
     private databaseService: DatabaseService,
     private cloudbaseService: CloudbaseService,
+    private userService: UserService,
   ) {}
 
   /**
@@ -79,6 +99,7 @@ export class DynService {
   async getDynList(params: GetDynListParams): Promise<any> {
     const {
       type = 2,
+      circleId,
       pageSize = 10,
       offset = 0,
       dataEnv = 'test',
@@ -86,7 +107,7 @@ export class DynService {
       publicTime: cursorTime,
     } = params;
 
-    console.log(`[DynService] getDynList - type: ${type}, pageSize: ${pageSize}, offset: ${offset}, dataEnv: ${dataEnv}`);
+    console.log(`[DynService] getDynList - type: ${type}, circleId: ${circleId ?? '-'}, pageSize: ${pageSize}, offset: ${offset}, dataEnv: ${dataEnv}`);
 
     try {
       const db = this.databaseService.getDatabase(dataEnv);
@@ -96,7 +117,20 @@ export class DynService {
       let orderBy: string;
       let sortOrder: 'asc' | 'desc';
 
-      if (type === 6) {
+      if (type === 1 && circleId) {
+        // 电站动态：dynStatus 与小程序统一 1=全部可见 2=仅圈子/树洞可见，树洞兼容 [1,2]
+        baseQuery = {
+          circleId,
+          dynStatus: _.in([1, 2]),
+          hiddenStatus: _.neq(1),
+          isDelete: _.neq(1),
+        };
+        if (cursorTime != null) {
+          baseQuery.publicTime = _.lt(cursorTime);
+        }
+        orderBy = 'publicTime';
+        sortOrder = 'desc';
+      } else if (type === 6) {
         // 关注：与 getFollowDyns 一致，从 user_followee 取 followeeId，再查这些人的动态
         if (!openId) {
           return { list: [], hasMore: false, publicTime: undefined };
@@ -135,7 +169,7 @@ export class DynService {
         orderBy = 'likeNums';
         sortOrder = 'desc';
       } else {
-        // type === 2 最新：与 getSquareList 一致
+        // type === 2 最新/首页：仅 1/6 展示，排除 2（仅圈子/树洞可见）
         baseQuery = {
           dynStatus: _.in([1, 6]),
           hiddenStatus: _.neq(1),
@@ -156,7 +190,11 @@ export class DynService {
         .limit(pageSize + 1)
         .get();
 
-      const dynList = dynResult.data || [];
+      let dynList = dynResult.data || [];
+      // 首页不展示树洞帖（dynStatus=2 仅圈子内可见）
+      if (type === 2) {
+        dynList = dynList.filter((d: any) => d.dynStatus !== 2);
+      }
       const hasMore = dynList.length > pageSize;
       if (hasMore) {
         dynList.pop();
@@ -252,6 +290,122 @@ export class DynService {
       return { list, hasMore, publicTime: lastPublicTime };
     } catch (error) {
       console.error('[DynService] getDynList error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取用户个人主页动态列表（直连，与 getDynsListV201 getUserDyns 规则一致）
+   * 主态：dynStatus 排除 2、5（_.nin([2,5])）；客态：先查关注关系，已关注 _.in([0,1,3,6,7,9])，未关注 _.in([0,1,3,6,7])
+   */
+  async getUserDynList(params: GetUserDynListParams): Promise<{ list: any[]; hasMore: boolean; publicTime?: number }> {
+    const {
+      targetOpenId,
+      targetOpenIds,
+      viewerOpenId,
+      limit = 20,
+      publicTime: cursorTime,
+      dataEnv = 'test',
+    } = params;
+
+    const queryIds = targetOpenIds?.length ? targetOpenIds : [targetOpenId];
+    const openIdCond = queryIds.length === 1 ? queryIds[0] : _.in(queryIds);
+
+    console.log(
+      `[DynService] getUserDynList - targetOpenId(尾4): ${targetOpenId?.slice(-4) ?? '-'}, queryIds.count: ${queryIds.length}, viewerOpenId(尾4): ${viewerOpenId?.slice(-4) ?? '-'}, limit: ${limit}, dataEnv: ${dataEnv}`,
+    );
+
+    try {
+      const db = this.databaseService.getDatabase(dataEnv);
+      const _ = db.command;
+
+      const isOwn = targetOpenId === viewerOpenId;
+      let dynStatusCond: any;
+      // 规则与小程序一致；同时匹配数字与字符串，避免库中 dynStatus 存为字符串导致 0 条
+      if (isOwn) {
+        dynStatusCond = _.nin([2, 5, '2', '5']);
+      } else {
+        const ifFollow = await this.userService.getFollowStatus(viewerOpenId, targetOpenId, dataEnv);
+        const allowedGuest = ifFollow ? [0, 1, 3, 6, 7, 9] : [0, 1, 3, 6, 7];
+        dynStatusCond = _.in([...allowedGuest, ...allowedGuest.map(String)]);
+      }
+
+      const baseQuery: any = {
+        openId: openIdCond,
+        dynStatus: dynStatusCond,
+        isDelete: _.neq(1),
+      };
+      if (cursorTime != null) {
+        baseQuery.publicTime = _.lt(cursorTime);
+      }
+
+      const dynResult = await db
+        .collection('dyn')
+        .where(baseQuery)
+        .orderBy('publicTime', 'desc')
+        .limit(limit + 1)
+        .get();
+
+      let dynList = dynResult.data || [];
+      console.log(`[DynService] getUserDynList dyn query result length=${dynList.length}, isOwn=${isOwn}, targetOpenId(尾4)=${targetOpenId?.slice(-4)}`);
+      const hasMore = dynList.length > limit;
+      if (hasMore) dynList.pop();
+
+      if (dynList.length === 0) {
+        return { list: [], hasMore: false, publicTime: undefined };
+      }
+
+      const userOpenIds = [...new Set(dynList.map((d: any) => d.openId))];
+      const userResult = await db
+        .collection('user')
+        .where({ openId: _.in(userOpenIds) })
+        .get();
+      const userMap = new Map<string, any>();
+      (userResult.data || []).forEach((u: any) => userMap.set(u.openId, u));
+
+      let praiseSet = new Set<string>();
+      let collectSet = new Set<string>();
+      if (viewerOpenId) {
+        const dynIds = dynList.map((d: any) => d._id);
+        const [praiseResult, collectResult] = await Promise.all([
+          db.collection('praise').where({ openId: viewerOpenId, dynId: _.in(dynIds), status: 1 }).field({ dynId: true }).get(),
+          db.collection('collect').where({ openId: viewerOpenId, dynId: _.in(dynIds), status: 1 }).field({ dynId: true }).get(),
+        ]);
+        (praiseResult.data || []).forEach((p: any) => praiseSet.add(p.dynId));
+        (collectResult.data || []).forEach((c: any) => collectSet.add(c.dynId));
+      }
+
+      const list = await Promise.all(
+        dynList.map(async (dyn: any) => {
+          const userInfo = userMap.get(dyn.openId) || {};
+          let images = dyn.images || [];
+          if (images.length > 0) images = await this.convertCloudUrls(images, dataEnv);
+          let avatar = userInfo.avatar || '';
+          if (avatar && avatar.startsWith('cloud://')) {
+            const [converted] = await this.convertCloudUrls([avatar], dataEnv);
+            avatar = converted;
+          }
+          const like = dyn.like || [];
+          const isChargedFromLike = !!(viewerOpenId && Array.isArray(like) && like.includes(viewerOpenId));
+          return transformDynItem({
+            ...dyn,
+            id: dyn._id,
+            images,
+            isPraised: praiseSet.has(dyn._id) || isChargedFromLike,
+            isCollected: collectSet.has(dyn._id),
+            isOwn: dyn.openId === viewerOpenId,
+            likeNums: dyn.likeNums ?? 0,
+            isCharged: isChargedFromLike,
+            userInfo: transformUserProfile({ ...userInfo, avatar }),
+          });
+        }),
+      );
+
+      const lastDyn = dynList[dynList.length - 1];
+      const lastPublicTime = this.extractTimestamp(lastDyn, 'publicTime') ?? this.extractTimestamp(lastDyn, 'createTime') ?? undefined;
+      return { list, hasMore, publicTime: lastPublicTime };
+    } catch (error) {
+      console.error('[DynService] getUserDynList error:', error);
       throw error;
     }
   }
@@ -416,6 +570,59 @@ export class DynService {
     } catch (error: any) {
       console.error('[DynService] chargeDyn error:', error);
       const message = error?.message || '充电失败';
+      return { code: 500, message };
+    }
+  }
+
+  /**
+   * 取消充电动态（从 like 中移除当前用户，与点赞共用 like / likeNums）
+   */
+  async unchargeDyn(params: ChargeDynParams): Promise<{ code: number; message?: string; data?: any }> {
+    const { dynId, openId, dataEnv = 'test' } = params;
+
+    try {
+      const db = this.databaseService.getDatabase(dataEnv);
+
+      const dynResult = await db.collection('dyn').doc(dynId).get();
+      if (dynResult && typeof (dynResult as any).code !== 'undefined' && (dynResult as any).code !== 0) {
+        const errMsg = (dynResult as any).message || '获取动态失败';
+        console.error('[DynService] unchargeDyn get doc error:', dynResult);
+        return { code: 500, message: errMsg };
+      }
+      const dyn = Array.isArray(dynResult.data) ? dynResult.data[0] : dynResult.data;
+
+      if (!dyn) {
+        return { code: 404, message: '动态不存在' };
+      }
+
+      const like = Array.isArray(dyn.like) ? [...dyn.like] : [];
+      const likeNums = Math.max(0, (dyn.likeNums ?? 0));
+      if (!like.includes(openId)) {
+        return { code: 200, message: 'success', data: { isLiked: false, likeNums, chargeCount: likeNums } };
+      }
+
+      const newLike = like.filter((id: string) => id !== openId);
+      const newNums = Math.max(0, likeNums - 1);
+
+      const ok = await this.databaseService.updateById(
+        'dyn',
+        dynId,
+        { like: newLike, likeNums: newNums },
+        dataEnv,
+      );
+
+      if (!ok) {
+        return { code: 500, message: '更新失败' };
+      }
+
+      return {
+        code: 200,
+        message: 'success',
+        data: { isLiked: false, likeNums: newNums, chargeCount: newNums },
+      };
+    } catch (error: any) {
+      console.error('[DynService] unchargeDyn error:', error);
+      const message = error?.message || '取消充电失败';
       return { code: 500, message };
     }
   }

@@ -242,6 +242,7 @@ struct SettingsView: View {
     
     private func saveUserInfo() async {
         isSaving = true
+        showErrorToast = false
         do {
             var data: [String: Any] = [
                 "userName": userName,
@@ -251,13 +252,15 @@ struct SettingsView: View {
                 "relationshipStatus": relationshipStatus,
                 "school": school
             ]
-            
+            // 生日：服务端常用时间戳（毫秒）
+            data["birthDay"] = Int(birthday.timeIntervalSince1970 * 1000)
+
             // 上传头像
             if let avatar = selectedAvatar {
                 let avatarUrl = try await APIService.shared.uploadImage(image: avatar)
                 data["avatar"] = avatarUrl
             }
-            
+
             // 上传照片
             if !selectedPhotos.isEmpty {
                 var photoUrls: [String] = []
@@ -267,19 +270,25 @@ struct SettingsView: View {
                 }
                 data["imgList"] = photoUrls
             }
-            
+
             _ = try await APIService.shared.updateUserInfo(data: data)
-            dismiss()
+            await MainActor.run {
+                dismiss()
+            }
         } catch {
             print("Failed to save user info: \(error)")
-            if let apiError = error as? APIError {
-                errorToastMessage = apiError.userMessage
-            } else {
-                errorToastMessage = "保存失败，请稍后重试"
+            await MainActor.run {
+                if let apiError = error as? APIError {
+                    errorToastMessage = apiError.userMessage
+                } else {
+                    errorToastMessage = "保存失败，请稍后重试"
+                }
+                showErrorToast = true
             }
-            showErrorToast = true
         }
-        isSaving = false
+        await MainActor.run {
+            isSaving = false
+        }
     }
 }
 

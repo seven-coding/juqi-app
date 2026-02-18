@@ -11,6 +11,9 @@ import Network
 
 class NetworkService {
     static let shared = NetworkService()
+
+    /// 收到 401 时不立即登出，先尝试刷新 token 再重试一次（减少充电/关注等操作误登出）
+    private let retry401Operations: Set<String> = ["appChargeUser", "appFollowUser", "appUnfollowUser", "appRefreshToken"]
     
     private var baseURL: String {
         return AppConfig.apiURL
@@ -95,11 +98,13 @@ class NetworkService {
             "appGetChargeList", "appGetFavoriteList", "appGetUserDynList",
             "appGetNoVisitList", "appGetNoSeeList", "appGetNoSeeMeList",
             "appGetUserProfile", "appGetDynComment",
-            "appChargeDyn", "appFollowUser", "appUnfollowUser", "appGetUserFollowStatus"
+            "appChargeDyn", "appUnchargeDyn", "appReportDyn", "appFollowUser", "appUnfollowUser", "appGetUserFollowStatus"
         ]
         if noCacheOperations.contains(operation) {
             effectiveUseCache = false
         }
+
+        var did401Retry = false
         
         // 检查网络状态（DEBUG 下使用 localhost 时仍尝试请求，避免 NWPathMonitor 误报离线）
         if !shouldAttemptNetworkRequest {
@@ -163,7 +168,27 @@ class NetworkService {
                 return result
             } catch let error as APIError {
                 lastError = error
-                
+
+                // 401 时对充电/关注等操作：先尝试刷新 token 再重试一次，仍 401 再登出
+                if case .tokenExpired = error, retry401Operations.contains(operation), !did401Retry {
+                    did401Retry = true
+                    do {
+                        try await AuthService.shared.refreshTokenOnce()
+                        let result: T = try await performRequest(operation: operation, data: data, needsToken: needsToken, useCache: effectiveUseCache)
+                        print("✅ [API] operation=\(operation) succeeded after 401 refresh retry")
+                        return result
+                    } catch {
+                        if case APIError.tokenExpired = error {
+                            print("❌ [API] operation=\(operation) still 401 after refresh, logging out")
+                            await MainActor.run {
+                                ToastManager.shared.error("登录已过期，请重新登录")
+                                AuthService.shared.logout()
+                            }
+                        }
+                        throw error
+                    }
+                }
+
                 // 如果不需要重试或已达到最大重试次数
                 if !error.isRetryable || attempt >= retryCount {
                     print("❌ [API] operation=\(operation) type=\(error.errorType) message=\(error.localizedDescription) retry=\(attempt)/\(retryCount)")
@@ -262,15 +287,32 @@ class NetworkService {
                 throw APIError.apiError(code: 0, message: "服务器返回空数据，请稍后重试")
             }
             
+            // 个人主页动态列表：打印原始响应便于定位「有数据但列表为空」问题
+            if operation == "appGetUserDynList", (200...299).contains(httpResponse.statusCode), !responseData.isEmpty {
+                if let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any] {
+                    let code = raw["code"] as? Int ?? -1
+                    if let dataObj = raw["data"] as? [String: Any] {
+                        let list = dataObj["list"]
+                        let listCount = (list as? [[String: Any]])?.count ?? (list as? [Any])?.count ?? -1
+                        let hasMore = dataObj["hasMore"] ?? "?"
+                        print("📋 [API] req=\(localReqId) operation=appGetUserDynList raw code=\(code) data.list.count=\(listCount) hasMore=\(hasMore)\(dataIdLogSuffix(data))")
+                    } else {
+                        print("📋 [API] req=\(localReqId) operation=appGetUserDynList raw code=\(code) data=null或非对象\(dataIdLogSuffix(data))")
+                    }
+                }
+            }
+
             // 处理HTTP状态码
             switch httpResponse.statusCode {
             case 200...299:
                 break
             case 401:
                 print("❌ [API] req=\(localReqId) operation=\(operation) error=Unauthorized 401\(dataIdLogSuffix(data))")
-                await MainActor.run {
-                    ToastManager.shared.error("登录已过期，请重新登录")
-                    AuthService.shared.logout()
+                if !retry401Operations.contains(operation) {
+                    await MainActor.run {
+                        ToastManager.shared.error("登录已过期，请重新登录")
+                        AuthService.shared.logout()
+                    }
                 }
                 throw APIError.tokenExpired
             case 500...599:
@@ -323,6 +365,34 @@ class NetworkService {
                     }
                     return profile as! T
                 }
+                // appGetCurrentUserProfile 返回结构异常或缺字段时，用 data 字典构造最小 profile 避免白屏
+                if operation == "appGetCurrentUserProfile",
+                   let top = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+                   (top["code"] as? Int) == 200,
+                   let dataAny = top["data"], let dataDict = dataAny as? [String: Any] {
+                    if let profile = UserProfile.fromLegacyAPI(dataDict: dataDict) {
+                        if useCache {
+                            let cacheKey = generateCacheKey(operation: operation, data: data)
+                            CacheService.shared.cacheResponse(profile, for: cacheKey)
+                        }
+                        return profile as! T
+                    }
+                    let minimal: [String: Any] = [
+                        "id": (dataDict["id"] as? String) ?? (dataDict["openId"] as? String) ?? "",
+                        "userName": (dataDict["userName"] as? String) ?? (dataDict["nickName"] as? String) ?? "",
+                        "isVip": (dataDict["isVip"] as? Bool) ?? false,
+                        "followCount": (dataDict["followCount"] as? Int) ?? 0,
+                        "followerCount": (dataDict["followerCount"] as? Int) ?? 0
+                    ]
+                    if let dataJson = try? JSONSerialization.data(withJSONObject: minimal),
+                       let profile = try? decoder.decode(UserProfile.self, from: dataJson) {
+                        if useCache {
+                            let cacheKey = generateCacheKey(operation: operation, data: data)
+                            CacheService.shared.cacheResponse(profile, for: cacheKey)
+                        }
+                        return profile as! T
+                    }
+                }
                 // 兼容部分电站 appGetCircleDetail 返回 data 为圈子对象直接包装（非 { circle, followStatus }）
                 if operation == "appGetCircleDetail",
                    let fallback = Self.decodeCircleDetailFallback(from: responseData, decoder: decoder) {
@@ -368,12 +438,20 @@ class NetworkService {
                 throw decodeError
             }
             
-            // 处理API错误码
+            // 处理API错误码：401 需区分「登录过期」与「业务 401」（如充电接口返回「已充电/点过」）
             if apiResponse.code == 401 {
+                let msg = apiResponse.message ?? ""
+                let isBusiness401 = msg.contains("点过") || msg.contains("已充电")
+                if isBusiness401 {
+                    print("❌ [API] req=\(localReqId) operation=\(operation) code=401 业务码 message=\(msg)")
+                    throw APIError.apiError(code: 401, message: msg)
+                }
                 print("❌ [API] req=\(localReqId) operation=\(operation) code=401 Token expired")
-                await MainActor.run {
-                    ToastManager.shared.error("登录已过期，请重新登录")
-                    AuthService.shared.logout()
+                if !retry401Operations.contains(operation) {
+                    await MainActor.run {
+                        ToastManager.shared.error("登录已过期，请重新登录")
+                        AuthService.shared.logout()
+                    }
                 }
                 throw APIError.tokenExpired
             }
@@ -391,10 +469,16 @@ class NetworkService {
                 throw APIError.apiError(code: apiResponse.code, message: msg)
             }
             
-            guard let resultData = apiResponse.data else {
+            // 兼容服务端返回 code=200 且 data=null 的空体接口（如 appDeleteDyn），视为成功
+            if apiResponse.data == nil {
+                if apiResponse.code == 200 && T.self == EmptyResponse.self {
+                    print("✅ [API] req=\(localReqId) operation=\(operation) code=200 data=null 按 EmptyResponse 成功")
+                    return EmptyResponse() as! T
+                }
                 print("❌ [API] req=\(localReqId) operation=\(operation) error=Response data is nil\(dataIdLogSuffix(data))")
                 throw APIError.unknown
             }
+            let resultData = apiResponse.data!
             
             let sid = apiResponse.requestId ?? "-"
             print("✅ [API] req=\(localReqId) requestId=\(sid) operation=\(operation) code=\(apiResponse.code)\(dataIdLogSuffix(data))")

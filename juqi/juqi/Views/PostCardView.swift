@@ -131,7 +131,7 @@ struct PostCardView: View {
                         Spacer()
                     }
                     
-                    // 右侧内容区域
+                    // 右侧内容区域（整块可点击进详情，图片/头像/按钮等子视图优先响应）
                     VStack(alignment: .leading, spacing: 8) {
                         // 用户名（加粗高亮，带VIP标识）
                         HStack(alignment: .center, spacing: 6) {
@@ -277,6 +277,7 @@ struct PostCardView: View {
                     }
                     .padding(.trailing, 4)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .contentShape(Rectangle())

@@ -1,11 +1,13 @@
+chore(backup): 2026-02-19
+
 新增（Added）
-- 客户端：SkeletonView 等视图或基础设施
-- 云托管/文档：apiServer 或部署相关新增说明
+- 云函数 getDynsListV201：dynStatus.js 动态状态逻辑
+- 客户端帖子详情：PostReportView 举报视图
 
 变更（Changed）
-- apiServer：auth/app/database/dyn/user 模块、data-transformer、部署脚本与全局配置说明
-- cloudfunctions：cloudbaserc、chargeHer 等调整；appApi 及测试等大量移除或迁移
-- 客户端：PublishView、SettingsView、juqiApp 等多处视图与配置
+- apiServer：app/dyn/user 模块与 dyn.service 扩展
+- cloudfunctions：appApiV201（circle/dyn/message/search/user）、getDynsListV201（getCircleDyns/getSquareList/getUserDyns）、getMessagesNewV201、publishDynV201、setTopicV201、updateUserInfoV201、delDynV201、getTopicV201 等
+- 客户端：KeychainHelper、AuthService、APIService、NetworkService、Post 模型；PostDetailView、UserProfileView、PublishView、ChargeListView、ChargeTipsView、CircleDetailView、SettingsView、TabBarView 等视图与发布/话题选择
 - docs：今日AI请求、日复盘、版本与进度
 
 修复（Fixed）

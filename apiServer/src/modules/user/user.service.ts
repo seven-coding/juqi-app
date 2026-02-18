@@ -86,7 +86,7 @@ export class UserService {
       const blockedCount = blockedCountResult?.total ?? user.blockedCount ?? 0;
       const chargeNums = toInt(user.chargeNums ?? user.chargeCount, 0);
 
-      // 返回与 iOS UserProfile 及云函数 GetCurrentUserProfile 一致的字段名
+      // 返回与 iOS UserProfile 及云函数 GetCurrentUserProfile 一致的字段名（含 ownOpenId 供客户端判断本人）
       const profile = transformUserProfile({
         ...user,
         id: user._id || user.openId,
@@ -102,7 +102,10 @@ export class UserService {
         blockedCount,
         chargeNums,
       });
-
+      if (profile && typeof profile === 'object') {
+        (profile as any).ownOpenId = user.openId;
+        (profile as any).isOwnProfile = true;
+      }
       return profile;
     } catch (error) {
       console.error('[UserService] getCurrentUserProfile error:', error);
@@ -212,6 +215,76 @@ export class UserService {
     } catch (error) {
       console.error('[UserService] getUserProfile error:', error);
       throw error;
+    }
+  }
+
+  /**
+   * 将 userId（user 表 _id 或 openId）解析为 openId，供个人主页动态等接口使用
+   * 与云函数 appApiV201 resolveUserIdToOpenId 语义一致：24/32 位十六进制视为 _id 查 user 表
+   */
+  async resolveUserIdToOpenId(userId: string | null | undefined, dataEnv: string = 'test'): Promise<string | null> {
+    const pair = await this.getOpenIdAndIdForUser(userId, dataEnv);
+    return pair ? pair.openId : (userId || null);
+  }
+
+  /**
+   * 解析用户标识为 openId + _id，便于 dyn 查询兼容「dyn.openId 存 openId 或存 user._id」两种写法
+   */
+  async getOpenIdAndIdForUser(
+    userId: string | null | undefined,
+    dataEnv: string = 'test',
+  ): Promise<{ openId: string; _id: string } | null> {
+    if (!userId || typeof userId !== 'string') return null;
+    try {
+      const db = this.databaseService.getDatabase(dataEnv);
+      const hex24 = /^[a-fA-F0-9]{24}$/.test(userId);
+      const hex32 = /^[a-fA-F0-9]{32}$/.test(userId);
+      let doc: any = null;
+      if (hex24 || hex32) {
+        const res = await db.collection('user').doc(userId).get();
+        doc = Array.isArray((res as any).data) ? (res as any).data[0] : (res as any).data;
+      } else {
+        const res = await db.collection('user').where({ openId: userId }).limit(1).get();
+        doc = (res.data && res.data[0]) ? res.data[0] : null;
+      }
+      if (!doc || !doc.openId) return null;
+      const openId = doc.openId;
+      const _id = doc._id ?? doc.id ?? '';
+      if (openId) console.log('[UserService] getOpenIdAndIdForUser userId=', userId, '-> openId(尾4)=', openId.slice(-4), '_id(尾4)=', String(_id).slice(-4));
+      return { openId, _id: String(_id) };
+    } catch (e: any) {
+      console.warn('[UserService] getOpenIdAndIdForUser 失败 userId=', userId, e?.message);
+      return null;
+    }
+  }
+
+  /** 获取「viewer 是否关注了 target」，与云函数 commonRequestV201 get_follow_status 一致，查 user_followee；超时按未关注 */
+  private static FOLLOW_STATUS_TIMEOUT_MS = 2500;
+
+  async getFollowStatus(
+    viewerOpenId: string,
+    targetOpenId: string,
+    dataEnv: string = 'test',
+  ): Promise<boolean> {
+    if (!viewerOpenId || !targetOpenId || viewerOpenId === targetOpenId) return false;
+    try {
+      const db = this.databaseService.getDatabase(dataEnv);
+      const p = db
+        .collection('user_followee')
+        .where({ openId: viewerOpenId, followeeId: targetOpenId, status: 1 })
+        .limit(1)
+        .get();
+      const race = await Promise.race([
+        p,
+        new Promise<{ data: any[] }>((_, reject) =>
+          setTimeout(() => reject(new Error('get_follow_status timeout')), UserService.FOLLOW_STATUS_TIMEOUT_MS),
+        ),
+      ]);
+      const list = (race as any).data || [];
+      return list.length > 0;
+    } catch (e: any) {
+      console.warn('[UserService] getFollowStatus timeout or error, treat as not follow:', e?.message);
+      return false;
     }
   }
 
